@@ -1,4 +1,5 @@
 extern crate codespan;
+extern crate isatty;
 extern crate termcolor;
 
 use std::cmp::Ordering;

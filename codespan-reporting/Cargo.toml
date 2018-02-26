@@ -9,4 +9,5 @@ publish = false
 
 [dependencies]
 codespan = { path = "../codespan", version = "0.1.0" }
+isatty = "0.1.6"
 termcolor = "0.3.4"
