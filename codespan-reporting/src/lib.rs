@@ -1,16 +1,38 @@
 extern crate codespan;
+extern crate enumflags;
 pub extern crate termcolor;
+
+#[macro_use]
+extern crate enumflags_derive;
+
+#[cfg(test)]
+extern crate unindent;
+
+#[cfg(test)]
+#[macro_use]
+extern crate pretty_assertions;
+
+#[cfg(test)]
+extern crate term;
+
+#[cfg(test)]
+extern crate regex;
 
 use std::cmp::Ordering;
 use std::fmt;
 use std::str::FromStr;
-use termcolor::{Color, ColorChoice};
+use termcolor::ColorChoice;
 
 mod diagnostic;
+mod emit_config;
 mod emitter;
+mod render_tree;
+mod style;
 
 pub use self::diagnostic::{Diagnostic, Label, LabelStyle};
-pub use self::emitter::emit;
+pub use self::emitter::{emit, format};
+pub use self::render_tree::*;
+pub use self::style::{ColorValue, Style};
 
 /// A severity level for diagnostic messages
 ///
@@ -64,16 +86,6 @@ impl fmt::Display for Severity {
 }
 
 impl Severity {
-    /// Return the termcolor to use when rendering messages of this diagnostic severity
-    pub fn color(self) -> Color {
-        match self {
-            Severity::Bug | Severity::Error => Color::Red,
-            Severity::Warning => Color::Yellow,
-            Severity::Note => Color::Green,
-            Severity::Help => Color::Cyan,
-        }
-    }
-
     /// A string that explains this diagnostic severity
     pub fn to_str(self) -> &'static str {
         match self {
