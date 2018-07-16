@@ -13,8 +13,8 @@ exclude = ["assets/**"]
 [dependencies]
 codespan = { path = "../codespan", version = "0.1.1" }
 termcolor = "0.3.6"
-enumflags = "0.4.1"
-enumflags_derive = "0.4.1"
+log = "0.4.3"
+itertools = "0.7.8"
 
 [dev-dependencies]
 structopt = "0.2.7"
@@ -23,3 +23,4 @@ term = "0.5.1"
 runtime-fmt = "0.3.0"
 pretty_assertions = { git = "https://github.com/Nemo157/rust-pretty-assertions", rev = "9332632" }
 regex = "1.0.1"
+pretty_env_logger = "0.2.3"

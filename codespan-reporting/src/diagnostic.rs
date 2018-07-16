@@ -45,6 +45,10 @@ impl Label {
         self.message = Some(message.into());
         self
     }
+
+    pub fn message(&self) -> Option<&str> {
+        self.message.as_ref().map(|m| &m[..])
+    }
 }
 
 /// Represents a diagnostic message and associated child messages.

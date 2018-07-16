@@ -2,8 +2,12 @@ extern crate codespan;
 extern crate codespan_reporting;
 #[macro_use]
 extern crate structopt;
+extern crate pretty_env_logger;
+extern crate termcolor;
 
+use std::io::prelude::*;
 use structopt::StructOpt;
+use termcolor::{Color, ColorSpec, WriteColor};
 
 use codespan::{CodeMap, Span};
 use codespan_reporting::termcolor::StandardStream;
@@ -22,8 +26,26 @@ pub struct Opts {
     pub color: ColorArg,
 }
 
+#[allow(unused)]
+fn test(opts: Opts) {
+    let mut writer = StandardStream::stderr(opts.color.into());
+
+    writer
+        .set_color(
+            ColorSpec::new()
+                .set_bold(true)
+                .set_intense(true)
+                .set_fg(Some(Color::White)),
+        )
+        .unwrap();
+    writeln!(writer, "hello world").unwrap();
+    writer.reset().unwrap();
+}
+
 fn main() {
+    pretty_env_logger::init();
     let opts = Opts::from_args();
+
     let mut code_map = CodeMap::new();
 
     let source = r##"
@@ -51,7 +73,13 @@ fn main() {
         "`+` function has no effect unless its result is used",
     ).with_label(Label::new_primary(Span::from_offset(line_start, 11.into())));
 
-    let diagnostics = [error, warning];
+    let no_file = Diagnostic::new(Severity::Help, "Great job!");
+
+    let bogus_span = Diagnostic::new(Severity::Bug, "Something really bad went wrong").with_label(
+        Label::new_primary(Span::from_offset(150.into(), 250.into())).with_message("YIKES"),
+    );
+
+    let diagnostics = [error, warning, no_file, bogus_span];
 
     let writer = StandardStream::stderr(opts.color.into());
     for diagnostic in &diagnostics {

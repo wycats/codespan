@@ -1,9 +1,11 @@
+#![feature(trace_macros)]
+
 extern crate codespan;
-extern crate enumflags;
+extern crate itertools;
 pub extern crate termcolor;
 
 #[macro_use]
-extern crate enumflags_derive;
+extern crate log;
 
 #[cfg(test)]
 extern crate unindent;
@@ -11,6 +13,9 @@ extern crate unindent;
 #[cfg(test)]
 #[macro_use]
 extern crate pretty_assertions;
+
+#[cfg(test)]
+extern crate pretty_env_logger;
 
 #[cfg(test)]
 extern crate term;
@@ -23,16 +28,22 @@ use std::fmt;
 use std::str::FromStr;
 use termcolor::ColorChoice;
 
+#[macro_use]
+pub mod render_tree;
+mod color;
+mod components;
 mod diagnostic;
-mod emit_config;
 mod emitter;
-mod render_tree;
+mod models;
 mod style;
 
+pub use self::color::Color;
 pub use self::diagnostic::{Diagnostic, Label, LabelStyle};
 pub use self::emitter::{emit, format};
+pub use self::render_tree::stylesheet::Stylesheet;
 pub use self::render_tree::*;
-pub use self::style::{ColorValue, Style};
+pub use self::style::Style;
+pub use render_tree::macros::*;
 
 /// A severity level for diagnostic messages
 ///
