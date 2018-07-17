@@ -1,5 +1,4 @@
 use render_tree::{Document, Render};
-use std::ops::Add;
 
 /// This trait defines a renderable entity with arguments. Types that implement
 /// `RenderComponent` can be packaged up together with their arguments in a
@@ -11,7 +10,7 @@ use std::ops::Add;
 /// #[macro_use]
 /// extern crate codespan_reporting;
 /// extern crate termcolor;
-/// use codespan_reporting::{Document, Display, RenderComponent};
+/// use codespan_reporting::{Document, RenderComponent};
 /// use termcolor::StandardStream;
 ///
 /// struct MessageContents {
@@ -28,7 +27,7 @@ use std::ops::Add;
 ///     fn render(&self, args: MessageContents) -> Document {
 ///         tree! {
 ///             <line {
-///                 {Display(args.code)} ":" {args.header}
+///                 {args.code} ":" {args.header}
 ///             }>
 ///
 ///             <line {
@@ -56,7 +55,10 @@ pub trait RenderComponent<'args> {
     fn render(&self, args: Self::Args) -> Document;
 }
 
-pub(crate) struct Component<'args, C: RenderComponent<'args>> {
+/// A Component is an instance of RenderComponent and its args. Component
+/// implements Render, so it can be added to a document during the render
+/// process.
+pub struct Component<'args, C: RenderComponent<'args>> {
     component: C,
     args: C::Args,
 }
@@ -68,25 +70,11 @@ impl<'args, C: RenderComponent<'args>> Component<'args, C> {
 }
 
 #[allow(non_snake_case)]
-pub fn Component<'args, C>(component: C, args: C::Args) -> Document
+pub fn Component<'args, C>(component: C, args: C::Args) -> Component<'args, C>
 where
-    C: RenderComponent<'args>,
+    C: RenderComponent<'args> + 'args,
 {
-    let document = Document::empty();
-    document.add(Component { component, args })
-}
-
-impl<'args, C1: RenderComponent<'args>, C2: RenderComponent<'args>> Add<Component<'args, C2>>
-    for Component<'args, C1>
-{
-    type Output = Document;
-
-    fn add(self, other: Component<'args, C2>) -> Document {
-        let mut fragment = Document::empty();
-        fragment = fragment.add(self);
-        fragment = fragment.add(other);
-        fragment
-    }
+    Component { component, args }
 }
 
 /// A Component is rendered by calling the component's render with
@@ -95,7 +83,7 @@ impl<'args, C> Render for Component<'args, C>
 where
     C: RenderComponent<'args>,
 {
-    fn render(self, document: Document) -> Document {
-        document + self.call()
+    fn render(self, into: Document) -> Document {
+        into.add(self.call())
     }
 }

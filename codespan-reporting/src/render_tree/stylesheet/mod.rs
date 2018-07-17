@@ -7,6 +7,94 @@ use render_tree::PadItem;
 use std::collections::HashMap;
 use Style;
 
+pub struct Selector {
+    segments: Vec<Segment>,
+}
+
+impl Selector {
+    pub fn new() -> Selector {
+        Selector { segments: vec![] }
+    }
+
+    pub fn glob() -> GlobSelector {
+        Selector::new().add_glob()
+    }
+
+    pub fn star() -> Selector {
+        Selector::new().add_star()
+    }
+
+    pub fn name(name: &'static str) -> Selector {
+        Selector::new().add(name)
+    }
+
+    pub fn add_glob(self) -> GlobSelector {
+        let mut segments = self.segments;
+        segments.push(Segment::Glob);
+        GlobSelector { segments }
+    }
+
+    pub fn add_star(mut self) -> Selector {
+        self.segments.push(Segment::Star);
+        self
+    }
+
+    pub fn add(mut self, segment: &'static str) -> Selector {
+        self.segments.push(Segment::Name(segment));
+        self
+    }
+}
+
+/// This type statically prevents appending a glob right after another glob,
+/// which is illegal. It shares the `add_star` and `add` methods with
+/// `Selector`, but does not have an `add_glob` method.
+pub struct GlobSelector {
+    segments: Vec<Segment>,
+}
+
+impl GlobSelector {
+    pub fn add_star(self) -> Selector {
+        let mut segments = self.segments;
+        segments.push(Segment::Star);
+        Selector { segments }
+    }
+
+    pub fn add(self, segment: &'static str) -> Selector {
+        let mut segments = self.segments;
+        segments.push(Segment::Name(segment));
+        Selector { segments }
+    }
+}
+
+impl IntoIterator for Selector {
+    type Item = Segment;
+    type IntoIter = ::std::vec::IntoIter<Segment>;
+
+    fn into_iter(self) -> ::std::vec::IntoIter<Segment> {
+        self.segments.into_iter()
+    }
+}
+
+impl IntoIterator for GlobSelector {
+    type Item = Segment;
+    type IntoIter = ::std::vec::IntoIter<Segment>;
+
+    fn into_iter(self) -> ::std::vec::IntoIter<Segment> {
+        self.segments.into_iter()
+    }
+}
+
+impl From<&'static str> for Selector {
+    fn from(from: &'static str) -> Selector {
+        let segments = from.split(' ');
+        let segments = segments.map(|part| part.into());
+
+        Selector {
+            segments: segments.collect(),
+        }
+    }
+}
+
 /// A Segment is one of:
 ///
 /// - Root: The root node
@@ -14,11 +102,23 @@ use Style;
 /// - Glob: `**`, matches zero or more section names
 /// - Name: A named segment, matches a section name that exactly matches the name
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-enum Segment {
+pub enum Segment {
     Root,
     Star,
     Glob,
     Name(&'static str),
+}
+
+impl From<&'static str> for Segment {
+    fn from(from: &'static str) -> Segment {
+        if from == "**" {
+            Segment::Glob
+        } else if from == "*" {
+            Segment::Star
+        } else {
+            Segment::Name(from)
+        }
+    }
 }
 
 /// A Node represents a segment, child segments, and an optional associated style.
@@ -26,7 +126,7 @@ enum Segment {
 struct Node {
     segment: Segment,
     children: HashMap<Segment, Node>,
-    style: Option<Style>,
+    declarations: Option<Style>,
 }
 
 impl Node {
@@ -34,12 +134,12 @@ impl Node {
         Node {
             segment,
             children: HashMap::new(),
-            style: None,
+            declarations: None,
         }
     }
 
     fn display<'a>(&'a self) -> NodeDetails<'a> {
-        NodeDetails::new(self.segment, &self.style)
+        NodeDetails::new(self.segment, &self.declarations)
     }
 
     /// Return a terminal node relative to the current node. If the current
@@ -59,16 +159,18 @@ impl Node {
     }
 
     /// Add nodes for the segment path, and associate it with the provided style.
-    fn add(&mut self, mut path: impl Iterator<Item = Segment>, style: impl Into<Style>) {
+    fn add(&mut self, selector: impl IntoIterator<Item = Segment>, declarations: impl Into<Style>) {
+        let mut path = selector.into_iter();
+
         match path.next() {
             None => {
-                self.style = Some(style.into());
+                self.declarations = Some(declarations.into());
             },
             Some(name) => self
                 .children
                 .entry(name)
                 .or_insert(Node::new(name))
-                .add(path, style),
+                .add(path, declarations),
         }
     }
 
@@ -102,7 +204,7 @@ impl Node {
                     terminal.display()
                 );
 
-                return terminal.style.clone();
+                return terminal.declarations.clone();
             },
 
             Some(next_name) => next_name,
@@ -253,18 +355,8 @@ impl Stylesheet {
     /// assert_eq!(stylesheet.get(&["message", "header", "error", "code"]),
     ///     Some(Style("weight: bold; fg: red")))
     /// ```
-    pub fn add(mut self, name: &'static str, style: impl Into<Style>) -> Stylesheet {
-        let segments = name.split(' ').map(|part| {
-            if part == "**" {
-                Segment::Glob
-            } else if part == "*" {
-                Segment::Star
-            } else {
-                Segment::Name(part)
-            }
-        });
-
-        self.styles.add(segments, style);
+    pub fn add(mut self, name: impl Into<Selector>, declarations: impl Into<Style>) -> Stylesheet {
+        self.styles.add(name.into(), declarations);
 
         self
     }

@@ -1,6 +1,5 @@
-use render_tree::{Display, Render};
+use render_tree::{Combine, Render};
 use std::io;
-use std::ops::Add;
 use style::WriteStyle;
 use termcolor::{ColorChoice, StandardStream, WriteColor};
 use Stylesheet;
@@ -13,6 +12,56 @@ pub enum Node {
     Newline,
 }
 
+/// The `Document` is the root node in a render tree.
+///
+/// The [`tree!`] macro produces a `Document`, and you can also build
+/// one manually.
+///
+/// ```
+/// use codespan_reporting::render_tree::{Document, Line, Render, Section};
+///
+/// fn main() -> std::io::Result<()> {
+///     let document = Document::empty()
+///         // You can add a `Line` to a document, with nested content
+///         .add(Line(
+///             // Strings implement `Render`
+///             "Hello"
+///         ))
+///         .add(Line(
+///             1.add(".").add(10)
+///         ))
+///         .add(Section("code",
+///             "[E".add(1000).add("]")
+///         ));
+///
+///     assert_eq!(document.to_string()?, "Hello\n1.10\n[E1000]");
+///
+///     Ok(())
+/// }
+/// ```
+///
+/// The above example is equivalent to this use of the [`tree!`] macro:
+///
+/// ```
+/// #[macro_use]
+/// extern crate codespan_reporting;
+///
+/// fn main() -> std::io::Result<()> {
+///     let document = tree! {
+///         <line { "Hello" }>
+///         <line {
+///             {1} "." {10}
+///         }>
+///         <section name="code" {
+///             "[E" {1000} "]"
+///         }>
+///     };
+///
+///     assert_eq!(document.to_string()?, "Hello\n1.10\n[E1000]");
+///
+///     Ok(())
+/// }
+/// ```
 #[derive(Debug, Clone)]
 pub struct Document {
     // Make the inner tree optional so it's free to create empty documents
@@ -24,11 +73,11 @@ impl Document {
         Document { tree: None }
     }
 
-    pub fn into_tree(self) -> Option<Vec<Node>> {
-        self.tree
+    pub fn with(renderable: impl Render) -> Document {
+        Document::empty().add(renderable)
     }
 
-    pub fn tree(&self) -> Option<&[Node]> {
+    pub(crate) fn tree(&self) -> Option<&[Node]> {
         match &self.tree {
             None => None,
             Some(vec) => Some(&vec[..]),
@@ -50,12 +99,12 @@ impl Document {
         self.extend(renderable.into_fragment())
     }
 
-    pub fn add_node(mut self, node: Node) -> Document {
+    pub(crate) fn add_node(mut self, node: Node) -> Document {
         self.initialize_tree().push(node);
         self
     }
 
-    pub fn extend_nodes(mut self, other: Vec<Node>) -> Document {
+    pub(crate) fn extend_nodes(mut self, other: Vec<Node>) -> Document {
         if other.len() > 0 {
             let tree = self.initialize_tree();
 
@@ -67,12 +116,12 @@ impl Document {
         self
     }
 
-    pub fn extend(self, fragment: Document) -> Document {
-        match (&self.tree, fragment.tree) {
-            (Some(_), Some(other)) => self.extend_nodes(other),
+    pub(crate) fn extend(self, fragment: Document) -> Document {
+        match (&self.tree, &fragment.tree) {
+            (Some(_), Some(_)) => self.extend_nodes(fragment.tree.unwrap()),
             (Some(_), None) => self,
-            (None, Some(nodes)) => Document { tree: Some(nodes) },
-            (None, None) => Document::empty(),
+            (None, Some(_)) => fragment,
+            (None, None) => self,
         }
     }
 
@@ -80,6 +129,21 @@ impl Document {
         let mut writer = StandardStream::stdout(ColorChoice::Always);
 
         self.write_with(&mut writer, &Stylesheet::new())
+    }
+
+    pub fn to_string(self) -> io::Result<String> {
+        let mut writer = ::termcolor::Buffer::no_color();
+        let stylesheet = Stylesheet::new();
+
+        self.write_with(&mut writer, &stylesheet)?;
+
+        Ok(String::from_utf8_lossy(writer.as_slice()).into())
+    }
+
+    pub fn write_styled(self, stylesheet: &Stylesheet) -> io::Result<()> {
+        let mut writer = StandardStream::stdout(ColorChoice::Always);
+
+        self.write_with(&mut writer, stylesheet)
     }
 
     pub fn write_with(
@@ -125,23 +189,6 @@ impl Document {
     }
 }
 
-impl Add<Document> for String {
-    type Output = Document;
-
-    fn add(self, other: Document) -> Document {
-        let fragment = Display(self);
-
-        match other.into_tree() {
-            None => fragment,
-            Some(tree) => fragment.extend_nodes(tree),
-        }
-    }
-}
-
-impl<T: Render> Add<T> for Document {
-    type Output = Document;
-
-    fn add(self, other: T) -> Document {
-        other.render(self)
-    }
+pub fn add<Left: Render, Right: Render>(left: Left, right: Right) -> Combine<Left, Right> {
+    Combine { left, right }
 }

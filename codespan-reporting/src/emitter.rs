@@ -2,7 +2,7 @@ use codespan::CodeMap;
 use components;
 use diagnostic::Diagnostic;
 use log;
-use render_tree::Component;
+use render_tree::{Component, Render};
 use std::{fmt, io};
 use termcolor::WriteColor;
 use Stylesheet;
@@ -30,7 +30,7 @@ where
     W: WriteColor,
 {
     fn emit<'doc>(mut self, data: DiagnosticData<'doc>) -> io::Result<()> {
-        let document = Component(components::Diagnostic, data);
+        let document = Component(components::Diagnostic, data).into_fragment();
 
         let styles = Stylesheet::new()
             .add("** header **", "weight: bold")

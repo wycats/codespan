@@ -33,7 +33,7 @@ impl<'args> RenderComponent<'args> for Header {
                         // error
                         {header.severity()}
                         // [E0001]
-                        {header.code().map(|code| tree! { "[" {code} "]" })}
+                        {IfSome(&header.code().map(|code| tree! { "[" {code} "]" }))}
                     }>
                     ": "
                     // Unexpected type in `+` application
@@ -69,7 +69,7 @@ impl<'args> RenderComponent<'args> for Body {
                     }
                 },
             }
-        })
+        }).into_fragment()
     }
 }
 
@@ -82,7 +82,7 @@ impl<'args> RenderComponent<'args> for CodeLine {
         tree! {
             <section name="code-line" {
                 <line {
-                    "- " {message.message()}
+                    "- " {IfSome(message.message())}
                 }>
             }>
         }
@@ -102,8 +102,8 @@ impl<'args> RenderComponent<'args> for SourceCodeLocation {
             <section name="source-code-location" {
                 <line {
                     // - <test>:3:9
-                    "- " {filename} ":" {Display(line.number())}
-                    ":" {Display(column.number())}
+                    "- " {filename} ":" {line.number()}
+                    ":" {column.number()}
                 }>
             }>
         }
@@ -123,7 +123,7 @@ impl<'args> RenderComponent<'args> for SourceCodeLine {
         tree! {
             <line {
                 <section name="gutter" {
-                    {Display(source_line.line_number())}
+                    {source_line.line_number()}
                     " | "
                 }>
 
@@ -143,14 +143,14 @@ impl<'args> RenderComponent<'args> for SourceCodeLine {
             <line {
                 <section name="underline" {
                     <section name="gutter" {
-                        {pad(" ", model.source_line().line_number_len())}
+                        {repeat(" ", model.source_line().line_number_len())}
                         " | "
                     }>
 
-                    {pad(" ", model.source_line().before_marked().len())}
+                    {repeat(" ", model.source_line().before_marked().len())}
                     <section name={model.style()} {
-                        {pad(model.mark(), model.source_line().marked().len())}
-                        {message}
+                        {repeat(model.mark(), model.source_line().marked().len())}
+                        {IfSome(&message)}
                     }>
                 }>
             }>

@@ -15,15 +15,17 @@ macro_rules! force_mismatch {
 #[macro_export]
 macro_rules! tree {
     (Add { left: { $($left:tt)* }, right: {} }) => {
-        $($left)*
+        $crate::render_tree::Document::with({ $($left)* })
     };
 
     (Add { left: {}, right: { $($right:tt)* } }) => {
-        $($right)*
+        $crate::render_tree::Document::with({ $($right)* })
     };
 
     (Add { left: { $($left:tt)* }, right: { $($right:tt)* } }) => {
-        $($left)* + tree!($($right)*)
+         $crate::render_tree::Document::empty()
+            .add($($left)*)
+            .add(tree!($($right)*))
     };
 
     (<line { $($inner:tt)* }> $($rest:tt)*) => {
@@ -76,10 +78,17 @@ macro_rules! tree {
         }
     };
 
+    ($token:ident $($rest:tt)*) => {
+        {
+            force_mismatch!($token);
+            compile_error!("Content must either be a string literal or enclosed in {}");
+        }
+    };
+
     ($token:tt $($rest:tt)*) => {
         tree!(Add {
             left: {
-                $crate::render_tree::Render::render($token, $crate::render_tree::Document::empty())
+                $token
             },
             right: {
                 $($rest)*
