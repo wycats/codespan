@@ -1,3 +1,4 @@
+use render_tree::helpers::{IterBlockHelper, SimpleBlockHelper};
 use render_tree::{Document, Render};
 
 /// This trait defines a renderable entity with arguments. Types that implement
@@ -10,7 +11,7 @@ use render_tree::{Document, Render};
 /// #[macro_use]
 /// extern crate codespan_reporting;
 /// extern crate termcolor;
-/// use codespan_reporting::{Document, RenderComponent};
+/// use codespan_reporting::{Document, Line, Render, RenderComponent};
 /// use termcolor::StandardStream;
 ///
 /// struct MessageContents {
@@ -19,22 +20,16 @@ use render_tree::{Document, Render};
 ///     body: String,
 /// }
 ///
-/// struct Message;
+/// fn Message(args: MessageContents, into: Document) -> Document {
+///     into.add(tree! {
+///         <Line as {
+///             {args.code} ":" {args.header}
+///         }>
 ///
-/// impl<'args> RenderComponent<'args> for Message {
-///     type Args = MessageContents;
-///
-///     fn render(&self, args: MessageContents) -> Document {
-///         tree! {
-///             <line {
-///                 {args.code} ":" {args.header}
-///             }>
-///
-///             <line {
-///                 {args.body}
-///             }>
-///         }
-///     }
+///         <Line as {
+///             {args.body}
+///         }>
+///     })
 /// }
 ///
 /// fn main() -> std::io::Result<()> {
@@ -52,38 +47,76 @@ use render_tree::{Document, Render};
 pub trait RenderComponent<'args> {
     type Args;
 
-    fn render(&self, args: Self::Args) -> Document;
+    fn render(&self, args: Self::Args, into: Document) -> Document;
 }
+
+type ComponentFn<Args> = fn(Args, Document) -> Document;
 
 /// A Component is an instance of RenderComponent and its args. Component
 /// implements Render, so it can be added to a document during the render
 /// process.
-pub struct Component<'args, C: RenderComponent<'args>> {
-    component: C,
-    args: C::Args,
-}
-
-impl<'args, C: RenderComponent<'args>> Component<'args, C> {
-    pub(crate) fn call(self) -> Document {
-        self.component.render(self.args)
-    }
+pub struct Component<Args> {
+    component: ComponentFn<Args>,
+    args: Args,
 }
 
 #[allow(non_snake_case)]
-pub fn Component<'args, C>(component: C, args: C::Args) -> Component<'args, C>
-where
-    C: RenderComponent<'args> + 'args,
-{
+pub fn Component<Args>(component: ComponentFn<Args>, args: Args) -> Component<Args> {
     Component { component, args }
 }
 
 /// A Component is rendered by calling the component's render with
 /// its args.
-impl<'args, C> Render for Component<'args, C>
+impl<Args> Render for Component<Args> {
+    fn render(self, into: Document) -> Document {
+        (self.component)(self.args, into)
+    }
+}
+
+pub struct IterBlockComponent<B: IterBlockHelper, F: Fn(B::Item, Document) -> Document> {
+    helper: B,
+    callback: F,
+}
+
+impl<B, F> Render for IterBlockComponent<B, F>
 where
-    C: RenderComponent<'args>,
+    B: IterBlockHelper,
+    F: Fn(B::Item, Document) -> Document,
 {
     fn render(self, into: Document) -> Document {
-        into.add(self.call())
+        (self.helper).render(self.callback, into)
     }
+}
+
+#[allow(non_snake_case)]
+pub fn IterBlockComponent<B, F>(helper: B, callback: F) -> IterBlockComponent<B, F>
+where
+    B: IterBlockHelper,
+    F: Fn(B::Item, Document) -> Document,
+{
+    IterBlockComponent { helper, callback }
+}
+
+pub struct SimpleBlockComponent<B: SimpleBlockHelper, F: FnOnce(Document) -> Document> {
+    helper: B,
+    callback: F,
+}
+
+impl<B, F> Render for SimpleBlockComponent<B, F>
+where
+    B: SimpleBlockHelper,
+    F: FnOnce(Document) -> Document,
+{
+    fn render(self, into: Document) -> Document {
+        (self.helper).render(self.callback, into)
+    }
+}
+
+#[allow(non_snake_case)]
+pub fn SimpleBlockComponent<B, F>(helper: B, callback: F) -> SimpleBlockComponent<B, F>
+where
+    B: SimpleBlockHelper,
+    F: FnOnce(Document) -> Document,
+{
+    SimpleBlockComponent { helper, callback }
 }

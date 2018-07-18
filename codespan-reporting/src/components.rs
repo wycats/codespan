@@ -1,159 +1,128 @@
+#![allow(non_snake_case)]
+
 use emitter::DiagnosticData;
 use models;
 use models::severity;
 use render_tree::*;
 
-pub(crate) struct Diagnostic;
+pub(crate) fn Diagnostic<'args>(data: DiagnosticData<'args>, into: Document) -> Document {
+    let header = models::Header::new(&data.diagnostic);
 
-impl<'args> RenderComponent<'args> for Diagnostic {
-    type Args = DiagnosticData<'args>;
-
-    fn render(&self, data: DiagnosticData<'args>) -> Document {
-        let header = models::Header::new(&data.diagnostic);
-
-        tree! {
-            <section name={severity(&data.diagnostic)} {
-                <Header {header}>
-                <Body {data}>
-            }>
-        }
-    }
+    into.add(tree! {
+        <section name={severity(&data.diagnostic)} {
+            <Header arg={header}>
+            <Body arg={data}>
+        }>
+    })
 }
 
-pub(crate) struct Header;
-
-impl<'args> RenderComponent<'args> for Header {
-    type Args = models::Header<'args>;
-
-    fn render(&self, header: models::Header<'args>) -> Document {
-        tree! {
-            <section name="header" {
-                <line {
-                    <section name="primary" {
-                        // error
-                        {header.severity()}
-                        // [E0001]
-                        {IfSome(&header.code().map(|code| tree! { "[" {code} "]" }))}
-                    }>
-                    ": "
-                    // Unexpected type in `+` application
-                    {header.message()}
+pub(crate) fn Header<'args>(header: models::Header<'args>, into: Document) -> Document {
+    into.add(tree! {
+        <section name="header" {
+            <Line as {
+                <section name="primary" {
+                    // error
+                    {header.severity()}
+                    // [E0001]
+                    {IfSome(header.code(), |code| tree! { "[" {code} "]" })}
                 }>
+                ": "
+                // Unexpected type in `+` application
+                {header.message()}
             }>
+        }>
+    })
+}
+
+pub(crate) fn Body<'args>(data: DiagnosticData<'args>, mut into: Document) -> Document {
+    for label in &data.diagnostic.labels {
+        match data.codemap.find_file(label.span.start()) {
+            None => {
+                into = into.add(tree! { <CodeLine args={models::Message::new(&label.message)}> })
+            },
+            Some(file) => {
+                let source_line = models::SourceLine::new(file, label);
+                let labelled_line = models::LabelledLine::new(source_line, label);
+
+                into = into.add(tree! {
+                    // - <test>:2:9
+                    <SourceCodeLocation args={source_line}>
+
+                    // 2 | (+ test "")
+                    //   |         ^^
+                    <SourceCodeLine arg={labelled_line}>
+                })
+            },
         }
     }
+
+    into
 }
 
-pub(crate) struct Body;
-
-impl<'args> RenderComponent<'args> for Body {
-    type Args = DiagnosticData<'args>;
-
-    fn render(&self, data: DiagnosticData<'args>) -> Document {
-        Each(&data.diagnostic.labels, |label| {
-            match data.codemap.find_file(label.span.start()) {
-                None => {
-                    tree! { <CodeLine {models::Message::new(&label.message)}> }
-                },
-                Some(file) => {
-                    let source_line = models::SourceLine::new(file, label);
-                    let labelled_line = models::LabelledLine::new(source_line, label);
-
-                    tree! {
-                        // - <test>:2:9
-                        <SourceCodeLocation {source_line}>
-
-                        // 2 | (+ test "")
-                        //   |         ^^
-                        <SourceCodeLine {labelled_line}>
-                    }
-                },
-            }
-        }).into_fragment()
-    }
-}
-
-pub(crate) struct CodeLine;
-
-impl<'args> RenderComponent<'args> for CodeLine {
-    type Args = models::Message<'args>;
-
-    fn render(&self, message: models::Message<'args>) -> Document {
-        tree! {
-            <section name="code-line" {
-                <line {
-                    "- " {IfSome(message.message())}
-                }>
+pub(crate) fn CodeLine<'args>(message: models::Message<'args>, into: Document) -> Document {
+    into.add(tree! {
+        <section name="code-line" {
+            <Line as {
+                "- " {SomeValue(message.message())}
             }>
-        }
-    }
+        }>
+    })
 }
 
-pub(crate) struct SourceCodeLocation;
+pub(crate) fn SourceCodeLocation(source_line: models::SourceLine, into: Document) -> Document {
+    let (line, column) = source_line.location();
+    let filename = source_line.filename().to_string();
 
-impl<'args> RenderComponent<'args> for SourceCodeLocation {
-    type Args = models::SourceLine<'args>;
-
-    fn render(&self, source_line: models::SourceLine) -> Document {
-        let (line, column) = source_line.location();
-        let filename = source_line.filename().to_string();
-
-        tree! {
-            <section name="source-code-location" {
-                <line {
-                    // - <test>:3:9
-                    "- " {filename} ":" {line.number()}
-                    ":" {column.number()}
-                }>
+    into.add(tree! {
+        <section name="source-code-location" {
+            <Line as {
+                // - <test>:3:9
+                "- " {filename} ":" {line.number()}
+                ":" {column.number()}
             }>
-        }
-    }
+        }>
+    })
 }
 
-pub(crate) struct SourceCodeLine;
+pub(crate) fn SourceCodeLine<'args>(
+    model: models::LabelledLine<'args>,
+    into: Document,
+) -> Document {
+    let source_line = model.source_line();
 
-impl<'args> RenderComponent<'args> for SourceCodeLine {
-    type Args = models::LabelledLine<'args>;
+    into.add(tree! {
+        <Line as {
+            <section name="gutter" {
+                {source_line.line_number()}
+                " | "
+            }>
 
-    fn render(&self, model: models::LabelledLine<'args>) -> Document {
-        let source_line = model.source_line();
+            <section name="before-marked" {
+                {source_line.before_marked()}
+            }>
 
-        let message = model.message().map(|message| tree!({" "} {message}));
+            <section name={model.style()} {
+                {model.source_line().marked()}
+            }>
 
-        tree! {
-            <line {
+            <section name="after-marked" {
+                {source_line.after_marked()}
+            }>
+        }>
+
+        <Line as {
+            <section name="underline" {
                 <section name="gutter" {
-                    {source_line.line_number()}
+                    {repeat(" ", model.source_line().line_number_len())}
                     " | "
                 }>
 
-                <section name="before-marked" {
-                    {source_line.before_marked()}
-                }>
-
+                {repeat(" ", model.source_line().before_marked().len())}
                 <section name={model.style()} {
-                    {model.source_line().marked()}
-                }>
-
-                <section name="after-marked" {
-                    {source_line.after_marked()}
+                    {repeat(model.mark(), model.source_line().marked().len())}
+                    {IfSome(model.message(), |message| tree!({" "} {message}))}
                 }>
             }>
-
-            <line {
-                <section name="underline" {
-                    <section name="gutter" {
-                        {repeat(" ", model.source_line().line_number_len())}
-                        " | "
-                    }>
-
-                    {repeat(" ", model.source_line().before_marked().len())}
-                    <section name={model.style()} {
-                        {repeat(model.mark(), model.source_line().marked().len())}
-                        {IfSome(&message)}
-                    }>
-                }>
-            }>
-        }
-    }
+        }>
+    })
 }

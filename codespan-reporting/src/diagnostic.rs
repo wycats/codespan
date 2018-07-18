@@ -46,8 +46,8 @@ impl Label {
         self
     }
 
-    pub fn message(&self) -> Option<&str> {
-        self.message.as_ref().map(|m| &m[..])
+    pub fn message(&self) -> &Option<String> {
+        &self.message
     }
 }
 

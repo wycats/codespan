@@ -209,5 +209,5 @@ pub(crate) mod utils;
 pub use self::component::*;
 pub use self::document::*;
 pub use self::helpers::*;
-pub use self::render::{Combine, IfSome, Render};
+pub use self::render::{Combine, IfSome, Render, SomeValue};
 pub use self::stylesheet::{Segment, Selector, Stylesheet};

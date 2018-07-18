@@ -42,8 +42,8 @@ impl<'doc> Header<'doc> {
         }
     }
 
-    pub(crate) fn code(&self) -> Option<&'doc str> {
-        self.code
+    pub(crate) fn code(&self) -> &Option<&'doc str> {
+        &self.code
     }
 
     pub(crate) fn message(&self) -> String {
@@ -142,7 +142,7 @@ impl<'doc> LabelledLine<'doc> {
         }
     }
 
-    pub(crate) fn message(&self) -> Option<&str> {
+    pub(crate) fn message(&self) -> &Option<String> {
         self.label.message()
     }
 

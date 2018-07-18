@@ -74,7 +74,7 @@ impl Document {
     }
 
     pub fn with(renderable: impl Render) -> Document {
-        Document::empty().add(renderable)
+        renderable.render(Document::empty())
     }
 
     pub(crate) fn tree(&self) -> Option<&[Node]> {
@@ -96,7 +96,7 @@ impl Document {
     }
 
     pub fn add(self, renderable: impl Render) -> Document {
-        self.extend(renderable.into_fragment())
+        renderable.render(self)
     }
 
     pub(crate) fn add_node(mut self, node: Node) -> Document {

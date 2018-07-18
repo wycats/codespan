@@ -1,4 +1,4 @@
-use super::{Document, Line, Node, Section};
+use super::{Document, Node, Section};
 
 /// The Render trait defines a type that can be added to a Document.
 /// It is defined for `Node`, `String`, `&str`, and `Document`.alloc
@@ -35,22 +35,16 @@ use super::{Document, Line, Node, Section};
 ///     duration: Duration,
 /// }
 ///
-/// struct Message;
+/// fn Message(args: MessageContents, into: Document) -> Document {
+///     into.render(tree! {
+///         <line {
+///             {args.code} ":" {args.header} "for" {RenderDuration(args.duration)}
+///         }>
 ///
-/// impl<'args> RenderComponent<'args> for Message {
-///     type Args = MessageContents;
-///
-///     fn render(&self, args: MessageContents) -> Document {
-///         tree! {
-///             <line {
-///                 {args.code} ":" {args.header} "for" {RenderDuration(args.duration)}
-///             }>
-///
-///             <line {
-///                 {args.body}
-///             }>
-///         }
-///     }
+///         <line {
+///             {args.body}
+///         }>
+///     })
 /// }
 ///
 /// fn main() -> std::io::Result<()> {
@@ -132,12 +126,6 @@ impl<Fragment: Render> Render for Section<Fragment> {
     }
 }
 
-impl<Fragment: Render> Render for Line<Fragment> {
-    fn render(self, into: Document) -> Document {
-        into.add(self.fragment).add(Node::Newline)
-    }
-}
-
 // /// An Option<impl Render> is rendered by doing nothing if None or
 // /// rendering the inner value if Some.
 // impl<T> Render for Option<T>
@@ -152,14 +140,54 @@ impl<Fragment: Render> Render for Line<Fragment> {
 //     }
 // }
 
-#[allow(non_snake_case)]
-pub fn IfSome(option: &Option<impl Render + Clone>) -> impl Render {
-    // TODO: TAKE A CLOSURE LIKE EACH
+struct IfSome<'item, T: 'item, R: Render, F: Fn(&T) -> R + 'item> {
+    option: &'item Option<T>,
+    callback: F,
+}
 
-    match option {
-        None => Document::empty(),
-        Some(inner) => inner.clone().render(Document::empty()),
+impl<'item, T, R, F> Render for IfSome<'item, T, R, F>
+where
+    T: 'item,
+    R: Render,
+    F: Fn(&T) -> R,
+{
+    fn render(self, mut into: Document) -> Document {
+        if let Some(inner) = self.option {
+            into = into.add((self.callback)(inner));
+        }
+
+        into
     }
+}
+
+#[allow(non_snake_case)]
+pub fn IfSome<'item, T: 'item, R: Render + 'item>(
+    option: &'item Option<T>,
+    callback: impl Fn(&T) -> R + 'item,
+) -> impl Render + 'item {
+    IfSome { option, callback }
+}
+
+struct SomeValue<'item, T: 'item> {
+    option: &'item Option<T>,
+}
+
+impl<'item, T> Render for SomeValue<'item, T>
+where
+    T: Render + Clone + 'item,
+{
+    fn render(self, mut into: Document) -> Document {
+        if let Some(inner) = self.option {
+            into = inner.clone().render(into)
+        }
+
+        into
+    }
+}
+
+#[allow(non_snake_case)]
+pub fn SomeValue<'item, R: Render + Clone>(option: &'item Option<R>) -> impl Render + 'item {
+    SomeValue { option }
 }
 
 // /// An `&impl Render + Clone` is rendered by cloning the value and
