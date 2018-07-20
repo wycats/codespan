@@ -7,7 +7,7 @@ macro_rules! unexpected_token {
     }};
 
     ($message:expr,trace = $trace:tt,tokens =) => {{
-        macro_trace!($message, $trace);
+        unexpected_eof!($message, $trace);
     }};
 
     ($($rest:tt)*) => {{
@@ -57,60 +57,12 @@ macro_rules! unimplemented_branch {
 #[macro_export]
 macro_rules! unexpected_eof {
      { $message:expr, trace = [ $($trace:tt)* ] } => {
-        compile_error!(concat!("Unexpected end of macro: ", $message, "\nMacro trace: ", stringify!($($trace)*)))
+        compile_error!(concat!("Unexpected end of block: ", $message, "\nMacro trace: ", stringify!($($trace)*)))
     };
 
     ($($rest:tt)*) => {{
         compile_error("Invalid call to unexpected_eof");
     }}
-}
-
-#[macro_export]
-macro_rules! tree {
-    {
-        trace = [ $($trace:tt)* ]
-        rest = [[ < $($rest:tt)* ]]
-    } => {
-        open_angle! {
-            trace = [ $($trace)* { open_angle } ]
-            rest = [[ $($rest)* ]]
-        }
-    };
-
-    {
-        trace = [ $($trace:tt)* ]
-        rest = [[ $token:tt $($rest:tt)* ]]
-    } => {{
-        let left = $crate::render_tree::Render::into_fragment($token);
-
-        let right = tree! {
-            trace = [ $($trace)* { next token } ]
-            rest = [[ $($rest)* ]]
-        };
-
-        concat_trees!(left, right)
-    }};
-
-    {
-        trace = $trace:tt
-        rest = [[  ]]
-    } => {
-        $crate::render_tree::Empty
-    };
-
-    {
-        trace = $trace:tt
-        rest = [[ $($rest:tt)* ]]
-    } => {
-        unimplemented_branch!("tree", trace = $trace, tokens = $($rest)*)
-    };
-
-    ($($rest:tt)*) => {
-        tree! {
-            trace = [ { tree } ]
-            rest = [[ $($rest)* ]]
-        }
-    };
 }
 
 #[macro_export]
@@ -131,20 +83,16 @@ macro_rules! concat_trees {
 }
 
 #[macro_export]
-macro_rules! open_angle {
-    {
-        trace = $trace:tt
-        rest = [[ $maybe_section:tt $($rest:tt)* ]]
-    } => {
-        open_angle! {
-            trace = $trace
-            double = [[ @double << $maybe_section $maybe_section >> $($rest)* ]]
-        }
-    };
-
+macro_rules! tree {
+    // We're effectively handling patterns of matched delimiters that aren't intrinsically
+    // supported by Rust here.
+    //
+    // If the first character we're processing is a `<`, that means we're looking at a
+    // component of some kind. This macro matches a list of individual tokens, and
+    // delegates the stuff between matching `< ... >`.
     {
         trace = [ $($trace:tt)* ]
-        double = [[ @double << $name:ident $double:ident >> $($rest:tt)* ]]
+        rest = [[ < $name:ident $($rest:tt)* ]]
     } => {
         tagged_element! {
             trace = [ $($trace)* { tagged_element } ]
@@ -154,25 +102,123 @@ macro_rules! open_angle {
         }
     };
 
+    // Anything other than an identifier immediately following a `<` is an error.
+    {
+        trace = [ $($trace:tt)* ]
+        rest = [[ < $token:tt $($rest:tt)* ]]
+    } => {{
+        unexpected_token!(concat!("Didn't expect ", stringify!($token), "after `<`. A component must begin with an identifier"), trace = $trace, tokens = $token)
+    }};
+
+    // An empty stream after `<` is an unexpected EOF
     {
         trace = $trace:tt
-        $kind:ident = [[ $($rest:tt)* ]]
+        rest = [[ < ]]
+    } => {{
+        unexpected_eof!("Unexpected end of block immediately following `<`", trace = $trace)
+    }};
+
+    // If we didn't see a component, we're matching a single token, which must
+    // correspond to an expression that produces an impl Render.
+    {
+        trace = [ $($trace:tt)* ]
+        rest = [[ $token:tt $($rest:tt)* ]]
+    } => {{
+        let left = $crate::render_tree::Render::into_fragment($token);
+
+        let right = tree! {
+            trace = [ $($trace)* { next token } ]
+            rest = [[ $($rest)* ]]
+        };
+
+        concat_trees!(left, right)
+    }};
+
+    // If there's no tokens left, produce Empty, which can be concatenated to
+    // the end of any other produced `Render`s.
+    {
+        trace = $trace:tt
+        rest = [[  ]]
     } => {
-        unimplemented_branch!("in open_angle", state="open_angle", trace=$trace, tokens=$($rest)*)
-    }
+        $crate::render_tree::Empty
+    };
+
+    // Anything else is an unexpected token, but since a previous rule matches
+    // any `$token:tt`, it's not obvious what could match here.
+    {
+        trace = $trace:tt
+        rest = [[ $($rest:tt)* ]]
+    } => {
+        unexpected_token!("Unexpected token in tree!", trace = $trace, tokens = $($rest)*)
+    };
+
+    // The entry point of the entire macro from the user.
+    ($($rest:tt)*) => {
+        tree! {
+            trace = [ { tree } ]
+            rest = [[ $($rest)* ]]
+        }
+    };
 }
 
+#[doc(hidden)]
 #[macro_export]
 macro_rules! tagged_element {
+    // The `key={value}` syntax is only compatible with block-based components,
+    // so if we see a `>` at this point, it's an error.
+    {
+        trace = [ $($trace:tt)* ]
+        name = $name:tt
+        args = [ { args = $value:tt } ]
+        rest = [[ > $($rest:tt)*]]
+    } => {{
+        let left = $crate::render_tree::Component($name, $value);
+
+        let right = tree! {
+            trace = [ $($trace)* { rest tree } ]
+            rest = [[ $($rest)* ]]
+        };
+
+        concat_trees!(left, right)
+    }};
+
+    // The `key={value}` syntax is only compatible with block-based components,
+    // so if we see a `>` at this point, it's an error.
     {
         trace = $trace:tt
         name = $name:tt
         args = [ { $key:ident = $value:tt } $({ $keys:ident = $values:tt })* ]
         rest = [[ > $($rest:tt)*]]
     } => {{
-        unexpected_token!("Only block-based components take keys and values as arguments. Pass arguments to inline components as `args={...}`", trace = $trace, tokens = $key);
+        unexpected_token!(
+            concat!(
+                "Only block-based components take keys and values as arguments. Pass arguments to inline components as `args={...}`",
+                stringify!($key = $value, $($keys = $values),* )
+            ),
+            trace = $trace,
+            tokens = $key
+        );
     }};
 
+    // Triage the next token into a "double token" because it may indicate an
+    // error. If it turns out to be an error, we wil have the token as a
+    // variable that we can get span reporting for.
+    {
+        trace = $trace:tt
+        name = $name:tt
+        args = $args:tt
+        rest = [[ $maybe_block:tt $($rest:tt)* ]]
+    } => {{
+        tagged_element! {
+            trace = $trace
+            name = $name
+            args = $args
+            double = [[ @double << $maybe_block $maybe_block >> $($rest)*  ]]
+        }
+    }};
+
+    // If we see a block, it's a mistake. Either the user forgot the name of
+    // the key for an argument or they forgot the `as` prefix to a block.
     {
         trace = $trace:tt
         name = $name:tt
@@ -190,20 +236,7 @@ macro_rules! tagged_element {
         );
     }};
 
-    {
-        trace = $trace:tt
-        name = $name:tt
-        args = $args:tt
-        rest = [[ $maybe_block:tt $($rest:tt)* ]]
-    } => {{
-        tagged_element! {
-            trace = $trace
-            name = $name
-            args = $args
-            double = [[ @double << $maybe_block $maybe_block >> $($rest)*  ]]
-        }
-    }};
-
+    // If we see an `as`, we're looking at a block component.
     {
         trace = [ $($trace:tt)* ]
         name = $name:tt
@@ -216,29 +249,31 @@ macro_rules! tagged_element {
             args = $args
             rest = [[ $($rest)* ]]
         )
-
     }};
 
-    {
-        trace = [ $($trace:tt)* ]
-        name = $name:tt
-        args = $args:tt
-        double = [[ @double << args args >> = $($rest:tt)*  ]]
-    } => {{
-        component_with_args! {
-            trace = [ $($trace)* { component_with_args } ]
-            name = $name
-            rest = [[ $($rest)* ]]
-        }
-    }};
+    // // Otherwise, if we see `args=`, it's the special singleton `args` case.
+    // {
+    //     trace = [ $($trace:tt)* ]
+    //     name = $name:tt
+    //     args = $args:tt
+    //     double = [[ @double << args args >> = $($rest:tt)*  ]]
+    // } => {{
+    //     component_with_args! {
+    //         trace = [ $($trace)* { component_with_args } ]
+    //         name = $name
+    //         rest = [[ $($rest)* ]]
+    //     }
+    // }};
 
+    // Otherwise, if we see an `ident=`, we're looking at a key of an
+    // argument. TODO: Combine this case with the previous one.
     {
         trace = [ $($trace:tt)* ]
         name = $name:tt
         args = $args:tt
         double = [[ @double << $key:ident $key2:ident >> = $($rest:tt)*  ]]
     } => {{
-        tagged_element_values! {
+        tagged_element_value! {
             trace = [ $($trace)* { tagged_element_values } ]
             name = $name
             args = $args
@@ -247,6 +282,7 @@ macro_rules! tagged_element {
         }
     }};
 
+    // Anything else is an error.
     {
         trace = $trace:tt
         name = $name:tt
@@ -256,27 +292,64 @@ macro_rules! tagged_element {
         unexpected_token!(concat!("Unexpected tokens after <", stringify!($name), ". Expected `key=value`, `as {` or `as |`"), trace = $trace, tokens = $token);
     }};
 
+    // No more tokens is an error
     {
         trace = $trace:tt
         name = $name:tt
         args = $args:tt
         rest = [[ ]]
     } => {{
-        unexpected_eof!("In tagged_element", trace = $trace);
+        unexpected_eof!(
+            concat!("Unexpected end of block after <", stringify!($name)),
+            trace = $trace
+        );
     }};
+}
 
+#[doc(hidden)]
+#[macro_export]
+macro_rules! tagged_element_value {
+    // We saw a `ident=` and are now looking for a value.
     {
         trace = $trace:tt
         name = $name:tt
-        args = $args:tt
-        rest = [[ $($rest:tt)* ]]
+        args = [ $($args:tt)* ]
+        key = $key:ident
+        rest = [[ $value:ident $($rest:tt)* ]]
     } => {
-        unimplemented_branch!("in tagged_element",trace=$trace, tokens=$($rest)*)
-    }
-}
+        unexpected_token!(
+            concat!(
+                "Unexpected value ",
+                stringify!($value),
+                ". The value must be enclosed in {...}. Did you mean `",
+                stringify!($key),
+                "={",
+                stringify!($value),
+                "}`?"
+            ),
+            trace = $trace,    
+            tokens = $value
+        );
+    };
 
-#[macro_export]
-macro_rules! tagged_element_values {
+    // We saw a `ident=` and found a block. Accumulate the key/value pair and
+    // continue parsing the tag.
+    {
+        trace = [ $($trace:tt)* ]
+        name = $name:tt
+        args = [ $($args:tt)* ]
+        key = $key:ident
+        rest = [[ $value:block $($rest:tt)* ]]
+    } => {
+        tagged_element! {
+            trace = [ $($trace)* { tagged_element } ]
+            name = $name
+            args = [ $($args)* { $key = $value } ]
+            rest = [[ $($rest)*]]
+        }
+    };
+
+    // Anything else is an error.
     {
         trace = [ $($trace:tt)* ]
         name = $name:tt
@@ -293,8 +366,13 @@ macro_rules! tagged_element_values {
     };
 }
 
+// We got to the end of the tag opening and now we found a block. Parse
+// the contents of the block as a new tree, and then continue processing
+// the tokens.
+#[doc(hidden)]
 #[macro_export]
 macro_rules! block_component {
+    // If there were no arguments, call the function with the inner block.
     {
         trace = [ $($trace:tt)* ]
         name = $name:tt
@@ -316,6 +394,73 @@ macro_rules! block_component {
         concat_trees!(component, rest)
     }};
 
+    // Otherwise, if the args were the special-case of `args={...}`, construct
+    // the argument object by calling Component::args($args). Then, call
+    // IterBlockComponent with the args and a closure that takes the
+    // component-supplied argument.
+    {
+        trace = [ $($trace:tt)* ]
+        name = $name:tt
+        args = [ { args = $args:tt } ]
+        rest = [[ |$id:tt| { $($inner:tt)* }> $($rest:tt)* ]]
+    } => {{
+        use $crate::render_tree::prelude::*;
+
+        let block = $crate::render_tree::IterBlockComponent(
+            $name::args($args), |$id, doc: Document| -> Document {
+                (tree! {
+                    trace = [ $($trace)* { inner tree } ]
+                    rest = [[ $($inner)* ]]
+                }).render(doc)
+            }
+        );
+
+        let rest = tree! {
+            trace = [ $($trace)* { rest tree } ]
+            rest = [[ $($rest)* ]]
+        };
+
+        concat_trees!(block, rest)
+    }};
+
+    // Otherwise, if there were arguments and closure parameters, construct
+    // the argument object with the component's name and supplied arguments.
+    // Then, call the component function with the constructed object and a
+    // closure that takes a component-supplied callback parameter.
+    {
+        trace = [ $($trace:tt)* ]
+        name = $name:tt
+        args = [ $({ $key:ident = $value:tt })* ]
+        rest = [[ |$id:tt| { $($block:tt)* }> $($rest:tt)* ]]
+    } => {{
+        use $crate::render_tree::prelude::*;
+
+        let component = $name {
+            $(
+                $key: $value
+            ),*
+        };
+
+        let block = $name(
+            component, |$id, doc: Document| -> Document {
+                (tree! {
+                    trace = [ $($trace)* { inner tree } ]
+                    rest = [[ $($block)* ]]
+                }).render(doc)
+            }
+        );
+
+        let rest = tree! {
+            trace = [ $($trace)* { rest tree } ]
+            rest = [[ $($rest)* ]]
+        };
+
+        concat_trees!(block, rest)
+    }};
+
+    // Otherwise, if there were arguments, construct the argument object
+    // with the component's name and supplied arguments, and call the
+    // function with a closure that doesn't take a user-supplied parameter.
     {
         trace = [ $($trace:tt)* ]
         name = $name:tt
@@ -346,211 +491,11 @@ macro_rules! block_component {
     }};
 
     {
-        trace = [ $($trace:tt)* ]
-        name = $name:tt
-        args = [ $({ $key:ident = $value:tt })* ]
-        rest = [[ |$id:tt| { $($block:tt)* }> $($rest:tt)* ]]
-    } => {{
-        use $crate::render_tree::prelude::*;
-
-        let component = $name {
-            $(
-                $key: $value
-            ),*
-        };
-
-        // TODO: propagate trace
-        let block = $name(
-            component, |$id, doc: Document| -> Document { (tree! { $($block)* }).render(doc) }
-        );
-
-        let rest = tree! {
-            trace = [ $($trace)* { rest tree } ]
-            rest = [[ $($rest)* ]]
-        };
-
-        concat_trees!(block, rest)
-    }};
-
-    {
         trace = $trace:tt
         name = $name:tt
         args = $args:tt
         rest = [[ $($rest:tt)* ]]
     } => {
-        unimplemented_branch!("other tokens", trace = $trace, tokens=$($rest)*)
-    };
-}
-
-#[macro_export]
-macro_rules! component_with_args {
-    {
-        trace = [ $($trace:tt)* ]
-        name = $name:tt
-        rest = [[ $value:tt $($rest:tt)* ]]
-    } => {
-        component_with_args_and_value! {
-            trace = [ $($trace)* { component_with_args_and_value } ]
-            name = $name
-            value = $value
-            rest = [[ $($rest)*]]
-        }
-    };
-
-    {
-        trace = $trace:tt
-        name = $name:tt
-        value = $value:tt
-        rest = [[ as { $($rest:tt)* } > $($rest:tt)* ]]
-    } => {
-        unimplemented_branch!("in component_with_args", trace = $trace, tokens = $($rest)*)
-    };
-
-    {
-        trace = $trace:tt
-        name = $name:tt
-        value = $value:tt
-        rest = [[ $($rest:tt)* ]]
-    } => {
-        unimplemented_branch!("in component_with_args", trace = $trace, tokens = $($rest)*)
-    };
-
-    {
-        $($rest:tt)*
-    } => {
-        compile_error!(concat!("Unexpected call to component_with_args", stringify!($($rest)*)))
-    }
-}
-
-#[macro_export]
-macro_rules! component_with_args_and_value {
-    // terminal
-    {
-        trace = [ $($trace:tt)* ]
-        name = $name:tt
-        value = $value:tt
-        rest = [[ > $($rest:tt)* ]]
-    } => {{
-        let left = $crate::render_tree::Component($name, $value);
-
-        let right = tree! {
-            trace = [ $($trace)* { rest tree } ]
-            rest = [[ $($rest)* ]]
-        };
-
-        concat_trees!(left, right)
-    }};
-
-    {
-        trace = [ $($trace:tt)* ]
-        name = $name:tt
-        value = $value:tt
-        rest = [[ as $($rest:tt)* ]]
-    } => {
-        component_with_args_and_block! {
-            trace = [ $($trace)* { component_with_args_and_block } ]
-            name = $name
-            value = $value
-            rest = [[ $($rest)* ]]
-        }
-    };
-
-    // terminal
-    {
-        trace = $trace:tt
-        name = $name:tt
-        value = $value:tt
-        rest = [[ as { $($rest:tt)* } > $($rest:tt)* ]]
-    } => {
-        unimplemented_branch!("in component_with_args_and_value", trace = $trace, tokens = $($rest)*)
-    };
-
-    {
-        trace = $trace:tt
-        name = $name:tt
-        value = $value:tt
-        rest = [[ @double << $pipe:tt | >> $param:ident| { $($block:tt)* } > $($rest:tt)* ]]
-    } => {{
-        unexpected_token!(
-            concat!(
-                "Block arguments (`|",
-                stringify!($param),
-                "|`) must come after the `as` keyword. Try `as |",
-                stringify!($param),
-                "|`"
-            ),
-            trace = $trace,
-            tokens = $pipe
-        )
-    }};
-
-    {
-        trace = $trace:tt
-        name = $name:tt
-        value = $value:tt
-        rest = [[ $maybe_pipe:tt $param:ident| { $($block:tt)* } > $($rest:tt)* ]]
-    } => {{
-        component_with_args_and_value! {
-            trace = $trace
-            name = $name
-            value = $value
-            rest = [[ @double << $maybe_pipe $maybe_pipe >> $param| { $($block)* } > $($rest)* ]]
-        }
-    }};
-
-    {
-        trace = $trace:tt
-        name = $name:tt
-        value = $value:tt
-        rest = [[ as |$param:ident| { $($rest:tt)* } > $($rest:tt)* ]]
-    } => {
-        unimplemented_branch!("in component_with_args_and_value", trace = $trace, tokens = $($rest)*)
-    };
-
-    {
-        trace = $trace:tt
-        name = $name:tt
-        value = $value:tt
-        rest = [[ $($rest:tt)* ]]
-    } => {
-        unimplemented_branch!("in component_with_args_and_value", trace = $trace, tokens = $($rest)*)
-    };
-}
-
-#[macro_export]
-macro_rules! component_with_args_and_block {
-    {
-        trace = [ $($trace:tt)* ]
-        name = $name:tt
-        value = $args:tt
-        rest = [[ |$id:ident| { $($inner:tt)* } > $($rest:tt)* ]]
-    } => {{
-        use $crate::render_tree::prelude::*;
-
-        // TODO: propagate trace
-        let block = $crate::render_tree::IterBlockComponent(
-            $name::args($args), |$id, doc: Document| -> Document {
-                (tree! {
-                    trace = [ $($trace)* { inner tree } ]
-                    rest = [[ $($inner)* ]]
-                }).render(doc)
-            }
-        );
-
-        let rest = tree! {
-            trace = [ $($trace)* { rest tree } ]
-            rest = [[ $($rest)* ]]
-        };
-
-        concat_trees!(block, rest)
-    }};
-
-    {
-        trace = $trace:tt
-        name = $name:tt
-        value = $value:tt
-        rest = [[ $($rest:tt)* ]]
-    } => {
-        unimplemented_branch!("in component_with_args_and_block", trace = $trace, tokens = $($rest)*)
+        unexpected_token!("Expected a block or closure parameters after `as`", trace = $trace, tokens=$($rest)*)
     };
 }
