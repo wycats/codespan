@@ -1,18 +1,18 @@
 #[doc(hidden)]
 #[macro_export]
 macro_rules! unexpected_token {
-    ($message:expr, trace = $trace:tt, tokens = $token:tt $($tokens:tt)*) => {{
+    ($message:expr,trace = $trace:tt,tokens = $token:tt $($tokens:tt)*) => {{
         force_mismatch!($token);
         macro_trace!($message, $trace);
     }};
 
-    ($message:expr, trace = $trace:tt, tokens = ) => {{
+    ($message:expr,trace = $trace:tt,tokens =) => {{
         macro_trace!($message, $trace);
     }};
 
     ($($rest:tt)*) => {{
         compile_error!("Invalid call to unexpected_token");
-    }}
+    }};
 }
 
 #[doc(hidden)]
@@ -115,7 +115,7 @@ macro_rules! tree {
 
 #[macro_export]
 macro_rules! concat_trees {
-    ($left:tt, ()) => {
+    ($left:tt,()) => {
         $left
     };
 
@@ -124,25 +124,27 @@ macro_rules! concat_trees {
     };
 
     ($left:tt, $right:tt) => {{
-        $crate::render_tree::Document::empty().add($left).add($right)
+        $crate::render_tree::Document::empty()
+            .add($left)
+            .add($right)
     }};
 }
 
 #[macro_export]
 macro_rules! open_angle {
     {
-        trace = [ $($trace:tt)* ]
-        rest = [[ section name = $($rest:tt)* ]]
+        trace = $trace:tt
+        rest = [[ $maybe_section:tt $($rest:tt)* ]]
     } => {
-        open_section! {
-            trace = [ $($trace)* { open_section } ]
-            rest = [[ $($rest)* ]]
+        open_angle! {
+            trace = $trace
+            double = [[ @double << $maybe_section $maybe_section >> $($rest)* ]]
         }
     };
 
     {
         trace = [ $($trace:tt)* ]
-        rest = [[ $name:ident $($rest:tt)* ]]
+        double = [[ @double << $name:ident $double:ident >> $($rest:tt)* ]]
     } => {
         tagged_element! {
             trace = [ $($trace)* { tagged_element } ]
@@ -154,98 +156,9 @@ macro_rules! open_angle {
 
     {
         trace = $trace:tt
-        rest = [[ $($rest:tt)* ]]
+        $kind:ident = [[ $($rest:tt)* ]]
     } => {
         unimplemented_branch!("in open_angle", state="open_angle", trace=$trace, tokens=$($rest)*)
-    }
-}
-
-#[macro_export]
-macro_rules! open_section {
-    {
-        trace = [ $($trace:tt)* ]
-        rest = [[ $name:tt $($rest:tt)* ]]
-    } => {
-        section_body! {
-            trace = [ $($trace)* { section_body } ]
-            name = $name
-            rest = [[ $($rest)* ]]
-        }
-    };
-
-    {
-        trace = $trace:tt
-        rest = [[ $($rest:tt)* ]]
-    } => {
-        unimplemented_branch!("in open_section", state="open_section", trace=$trace, tokens=$($rest)*)
-    };
-
-    {
-        trace = $trace:tt 
-        rest = [[ ]]
-    } => {
-        unexpected_eof!("in open_section", trace = $trace)
-    };
-}
-
-#[macro_export]
-macro_rules! section_body {
-    // terminal
-    (
-        trace = [ $($trace:tt)* ]
-        name=$name:tt
-        rest=[[ as { $($tokens:tt)* }> $($rest:tt)* ]]
-    ) => {{
-        let section = $crate::render_tree::Section(
-            $name,
-            tree! {
-                trace = [ $($trace)* { left tree } ]
-                rest = [[ $($tokens)* ]]
-            }
-        );
-
-        let right = tree! {
-            trace = [ $($trace)* { right tree } ]
-            rest = [[ $($rest)* ]]
-        };
-
-        concat_trees!(section, right)
-    }};
-
-    (
-        trace = $trace:tt
-        name=$name:tt
-        rest=[[ @double << $block:tt { $($inner:tt)* } >> $($rest:tt)* ]]
-    ) => {{
-        unexpected_token!(
-            concat!(
-                "Pass a block to <section> with the `as` keyword: <section name=",
-                stringify!($name),
-                " as { ... }>"
-            ),
-            trace = $trace,
-            tokens = $block
-        );
-    }};
-
-    (
-        trace = $trace:tt
-        name=$name:tt
-        rest=[[ $next:tt $($rest:tt)* ]]
-    ) => {{
-        section_body! {
-            trace = $trace
-            name = $name
-            rest = [[ @double << $next $next >> $($rest)* ]]
-        }
-    }};
-
-    (
-        trace = $trace:tt
-        name=$name:tt
-        rest=[[ $($rest:tt)* ]]
-    ) => {
-        unimplemented_branch!("in section_body", trace = $trace, tokens = $($rest)*)
     }
 }
 
@@ -385,7 +298,7 @@ macro_rules! block_component {
     {
         trace = [ $($trace:tt)* ]
         name = $name:tt
-        args = $args:tt
+        args = []
         rest = [[ { $($block:tt)* }> $($rest:tt)* ]]
     } => {{
         let inner = tree! {
@@ -407,9 +320,38 @@ macro_rules! block_component {
         trace = [ $($trace:tt)* ]
         name = $name:tt
         args = [ $({ $key:ident = $value:tt })* ]
+        rest = [[ { $($block:tt)* }> $($rest:tt)* ]]
+    } => {{
+        use $crate::render_tree::prelude::*;
+
+        let component = $name {
+            $(
+                $key: $value,
+            )*
+        };
+
+        let block = $name(
+            component, |doc: Document| -> Document { ( tree! {
+            trace = [ $($trace)* { inner tree } ]
+            rest = [[ $($block)* ]]
+        }).render(doc) });
+
+
+        let rest = tree! {
+            trace = [ $($trace)* { rest tree } ]
+            rest = [[ $($rest)* ]]
+        };
+
+        concat_trees!(block, rest)
+    }};
+
+    {
+        trace = [ $($trace:tt)* ]
+        name = $name:tt
+        args = [ $({ $key:ident = $value:tt })* ]
         rest = [[ |$id:tt| { $($block:tt)* }> $($rest:tt)* ]]
     } => {{
-        use $crate::render_tree::{Document, Render};
+        use $crate::render_tree::prelude::*;
 
         let component = $name {
             $(
@@ -418,7 +360,7 @@ macro_rules! block_component {
         };
 
         // TODO: propagate trace
-        let block = $crate::render_tree::IterBlockComponent(
+        let block = $name(
             component, |$id, doc: Document| -> Document { (tree! { $($block)* }).render(doc) }
         );
 
@@ -583,8 +525,7 @@ macro_rules! component_with_args_and_block {
         value = $args:tt
         rest = [[ |$id:ident| { $($inner:tt)* } > $($rest:tt)* ]]
     } => {{
-        use $crate::render_tree::Render;
-        use $crate::render_tree::IterBlockHelper;
+        use $crate::render_tree::prelude::*;
 
         // TODO: propagate trace
         let block = $crate::render_tree::IterBlockComponent(
@@ -613,131 +554,3 @@ macro_rules! component_with_args_and_block {
         unimplemented_branch!("in component_with_args_and_block", trace = $trace, tokens = $($rest)*)
     };
 }
-
-// (Add { left: { $($left:tt)* }, right: {} }) => {
-//     $crate::render_tree::Document::with({ $($left)* })
-// };
-
-// (Add { left: {}, right: { $($right:tt)* } }) => {
-//     $crate::render_tree::Document::with({ $($right)* })
-// };
-
-// (Add { left: { $($left:tt)* }, right: { $($right:tt)* } }) => {
-//      $crate::render_tree::Document::empty()
-//         .add({{ $($left)* }})
-//         .add(tree!($($right)*))
-// };
-
-// (<section name=$token:tt { $($inner:tt)* }> $($rest:tt)*) => {
-//     tree!(Add {
-//         left: {
-//             $crate::render_tree::Section(
-//                 $token,
-//                 { tree!($($inner)*) }
-//             )
-//         },
-//         right: {
-//             $($rest)*
-//         }
-//     })
-// };
-
-// (<section name=$token:tt $unexpected:tt $($rest:tt)*) => {
-//     {
-//         force_mismatch!($unexpected);
-//         unexpected_token!("The nesting syntax for section is <section name=name { ... }>");
-//     }
-// };
-
-// (< $name:ident args = $args:block > $($rest:tt)*) => {
-//     tree!(Add {
-//         left: {
-//             $crate::render_tree::Component($name, $args)
-//         },
-//         right: {
-//             $($rest)*
-//         }
-//     })
-// };
-
-// (<$name:ident as { $($inner:tt)* }> $($rest:tt)*) => {
-//     tree!(Add {
-//         left: {
-//             $crate::render_tree::SimpleBlockComponent(
-//                 $name, |doc: Document| -> Document { (tree! { $($inner)* }).render(doc) }
-//             )
-//         },
-//         right: { $($rest)* }
-//     })
-// };
-
-// (<$name:ident $args:block |$item:ident| { $($inner:tt)* }> $($rest:tt)*) => {
-//     tree!(Add {
-//         left: {
-//             use $crate::render_tree::IterBlockHelper;
-
-//             $crate::render_tree::IterBlockComponent(
-//                 $name::args($args), |$item, doc: Document| -> Document { (tree! { $($inner)* }).render(doc) }
-//             )
-//         },
-//         right: { $($rest)* }
-//     })
-// };
-
-// (<$name:ident $($arg:ident = $value:tt)* |$item:ident| { $($inner:tt)* }> $($rest:tt)*) => {
-//     tree!(Add {
-//         left: {
-//             let component = $name {
-//                 $($arg: $value),*
-//             };
-
-//             $crate::render_tree::IterBlockComponent(
-//                 component, |$item, doc: Document| -> Document { (tree! { $($inner)* }).render(doc) }
-//             )
-//         },
-//         right: { $($rest)* }
-//     })
-// };
-
-// (<$name:ident $args:block |$item:ident : $itemty:ty| { $($inner:tt)* }> $($rest:tt)*) => {
-//     tree!(Add {
-//         left: {
-//             use $crate::render_tree::BlockHelper;
-
-//             $crate::render_tree::BlockComponent(
-//                 $name::args($args), |$item: $itemty, doc: Document| -> Document { (tree! { $($inner)* }).render(doc) }
-//             )
-//         },
-//         right: { $($rest)* }
-//     })
-// };
-
-// (< $name:ident $mismatch:tt > $($rest:tt)*) => {{
-//     force_mismatch!($mismatch);
-//     unexpected_token!(concat!("Unexpected block ", stringify!($mismatch), " for ", stringify!($name), ". Either you forgot `as` or you forgot args={{...}}"));
-// }};
-
-// // (< $name:ident $args:block $unexpected:tt $($rest:tt)*) => {
-// //     {
-// //         force_mismatch!($unexpected);
-// //         unexpected_token!("The component syntax is <ComponentName {args}> or <ComponentName {args} |name| { ... }>");
-// //     }
-// // };
-
-// ($token:ident $($rest:tt)*) => {
-//     {
-//         force_mismatch!($token);
-//         compile_error!("Content must either be a string literal or enclosed in {}");
-//     }
-// };
-
-// ($token:tt $($rest:tt)*) => {
-//     tree!(Add {
-//         left: {
-//             $token
-//         },
-//         right: {
-//             $($rest)*
-//         }
-//     })
-// }

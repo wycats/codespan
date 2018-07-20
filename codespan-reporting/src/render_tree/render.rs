@@ -1,4 +1,4 @@
-use super::{Document, Node, Section};
+use super::{Document, Node};
 
 /// The Render trait defines a type that can be added to a Document.
 /// It is defined for `Node`, `String`, `&str`, and `Document`.alloc
@@ -115,14 +115,6 @@ impl Render for Node {
 impl Render for Document {
     fn render(self, into: Document) -> Document {
         into.extend(self)
-    }
-}
-
-impl<Fragment: Render> Render for Section<Fragment> {
-    fn render(self, into: Document) -> Document {
-        into.add(Node::OpenSection(self.name))
-            .add(self.fragment)
-            .add(Node::CloseSection)
     }
 }
 

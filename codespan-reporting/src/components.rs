@@ -9,7 +9,7 @@ pub(crate) fn Diagnostic<'args>(data: DiagnosticData<'args>, into: Document) -> 
     let header = models::Header::new(&data.diagnostic);
 
     into.add(tree! {
-        <section name={severity(&data.diagnostic)} as {
+        <Section name={severity(&data.diagnostic)} as {
             <Header args={header}>
             <Body args={data}>
         }>
@@ -18,9 +18,9 @@ pub(crate) fn Diagnostic<'args>(data: DiagnosticData<'args>, into: Document) -> 
 
 pub(crate) fn Header<'args>(header: models::Header<'args>, into: Document) -> Document {
     into.add(tree! {
-        <section name="header" as {
+        <Section name="header" as {
             <Line as {
-                <section name="primary" as {
+                <Section name="primary" as {
                     // error
                     {header.severity()}
                     // [E0001]
@@ -61,7 +61,7 @@ pub(crate) fn Body<'args>(data: DiagnosticData<'args>, mut into: Document) -> Do
 
 pub(crate) fn CodeLine<'args>(message: models::Message<'args>, into: Document) -> Document {
     into.add(tree! {
-        <section name="code-line" as {
+        <Section name="code-line" as {
             <Line as {
                 "- " {SomeValue(message.message())}
             }>
@@ -74,7 +74,7 @@ pub(crate) fn SourceCodeLocation(source_line: models::SourceLine, into: Document
     let filename = source_line.filename().to_string();
 
     into.add(tree! {
-        <section name="source-code-location" as {
+        <Section name="source-code-location" as {
             <Line as {
                 // - <test>:3:9
                 "- " {filename} ":" {line.number()}
@@ -92,33 +92,34 @@ pub(crate) fn SourceCodeLine<'args>(
 
     into.add(tree! {
         <Line as {
-            <section name="gutter" as {
+            <Section name="gutter" as {
                 {source_line.line_number()}
                 " | "
             }>
 
-            <section name="before-marked" as {
+            <Section name="before-marked" as {
                 {source_line.before_marked()}
             }>
 
-            <section name={model.style()} as {
+            <Section name={model.style()} as {
                 {model.source_line().marked()}
             }>
 
-            <section name="after-marked" as {
+            <Section name="after-marked" as {
                 {source_line.after_marked()}
             }>
         }>
 
         <Line as {
-            <section name="underline" as {
-                <section name="gutter" as {
+            <Section name="underline" as {
+                <Section name="gutter" as {
                     {repeat(" ", model.source_line().line_number_len())}
                     " | "
                 }>
 
                 {repeat(" ", model.source_line().before_marked().len())}
-                <section name={model.style()} as {
+
+                <Section name={model.style()} as {
                     {repeat(model.mark(), model.source_line().marked().len())}
                     {IfSome(model.message(), |message| tree!({" "} {message}))}
                 }>

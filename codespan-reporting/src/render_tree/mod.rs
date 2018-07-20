@@ -48,7 +48,7 @@
 //! #[macro_use]
 //! extern crate codespan_reporting;
 //! extern crate termcolor;
-//! use codespan_reporting::{Document, Line, RenderComponent, Stylesheet};
+//! use codespan_reporting::{Document, Line, RenderComponent, Section, Stylesheet};
 //! use termcolor::StandardStream;
 //!
 //! fn main() -> std::io::Result<()> {
@@ -56,12 +56,12 @@
 //!
 //!     let document = tree! {
 //!         <Line as {
-//!             <section name="hello" as { "Hello" }>
+//!             <Section name="hello" as { "Hello" }>
 //!             {world}
 //!         }>
 //!
 //!         <Line as {
-//!             <section name="goodbye" as { "Goodbye"}>
+//!             <Section name="goodbye" as { "Goodbye"}>
 //!             {world}
 //!         }>
 //!     };
@@ -91,7 +91,7 @@
 //! #[macro_use]
 //! extern crate codespan_reporting;
 //! extern crate termcolor;
-//! use codespan_reporting::{Document, Line, RenderComponent, Stylesheet};
+//! use codespan_reporting::{Document, Line, RenderComponent, Section, Stylesheet};
 //! use termcolor::StandardStream;
 //!
 //! fn main() -> std::io::Result<()> {
@@ -99,8 +99,8 @@
 //!
 //!     let document = tree! {
 //!         <Line as {
-//!             <section name="hello-world" as {
-//!                 <section name="greeting" as { "Hello" }>
+//!             <Section name="hello-world" as {
+//!                 <Section name="greeting" as { "Hello" }>
 //!                 {world}
 //!             }>
 //!         }>
@@ -110,8 +110,8 @@
 //!         }>
 //!
 //!         <Line as {
-//!             <section name="goodbye-world" as {
-//!                 <section name="greeting" as { "Goodbye" }>
+//!             <Section name="goodbye-world" as {
+//!                 <Section name="greeting" as { "Goodbye" }>
 //!                 {world}
 //!             }>
 //!         }>
@@ -171,8 +171,10 @@
 //!     
 //!     let document = Document::with(
 //!         Line(
-//!             Section("hello-world",
-//!                 Section("greeting", "Hello").add(world)
+//!             Section("hello-world", |doc|
+//!                 doc.add(
+//!                     Section("greeting", |doc| doc.add("Hello").add(world))
+//!                 )
 //!             )
 //!         )
 //!     ).add(
@@ -181,8 +183,10 @@
 //!         )
 //!     ).add(
 //!         Line(
-//!             Section("goodbye-world",
-//!                 Section("greeting", "Goodbye").add(world)
+//!             Section("goodbye-world", |doc|
+//!                 doc.add(
+//!                     Section("greeting", |doc| doc.add("Goodbye").add(world))
+//!                 )
 //!             )
 //!         )
 //!     );
@@ -205,6 +209,13 @@ mod helpers;
 mod render;
 pub mod stylesheet;
 pub(crate) mod utils;
+
+pub mod prelude {
+    pub use super::component::*;
+    pub use super::document::*;
+    pub use super::helpers::*;
+    pub use super::render::{Combine, Empty, IfSome, Render, SomeValue};
+}
 
 pub use self::component::*;
 pub use self::document::*;

@@ -1,4 +1,4 @@
-use render_tree::component::OnceBlock;
+use render_tree::component::{IterBlockHelper, OnceBlock, OnceBlockComponent, OnceBlockHelper};
 use render_tree::{Document, IterBlockComponent, Node, Render};
 use std::fmt;
 
@@ -17,35 +17,6 @@ impl<T: fmt::Display> fmt::Display for PadItem<T> {
         }
         Ok(())
     }
-}
-
-pub(crate) struct Section<R: Render> {
-    pub(crate) name: &'static str,
-    pub(crate) fragment: R,
-}
-
-/// A section that can be appended into a document. Sections are invisible, but
-/// can be targeted in stylesheets with selectors using their name.
-#[allow(non_snake_case)]
-pub fn Section(name: &'static str, fragment: impl Render) -> impl Render {
-    Section { name, fragment }
-}
-
-pub trait IterBlockHelper {
-    type Args;
-    type Item;
-
-    fn args(Self::Args) -> Self;
-
-    fn render(
-        self,
-        callback: impl Fn(Self::Item, Document) -> Document,
-        document: Document,
-    ) -> Document;
-}
-
-pub trait SimpleBlockHelper {
-    fn render(self, callback: impl FnOnce(Document) -> Document, document: Document) -> Document;
 }
 
 /// A list of items that can be appended into a [`Document`]. For each item in
@@ -99,15 +70,6 @@ pub trait SimpleBlockHelper {
 /// # }
 /// ```
 
-// #[allow(non_snake_case)]
-// pub fn Each<'item, Items, T, F>(items: Items, callback: F) -> BlockComponent<Items, T, F>
-// where
-//     Items: IntoIterator<Item = &'item T> + 'item,
-//     T: 'item,
-//     F: Fn(&T, Document) -> Document,
-// {
-//     BlockComponent(EachComponent, items, callback)
-// }
 pub struct Each<U, Iterator: IntoIterator<Item = U>> {
     items: Iterator,
 }
@@ -136,13 +98,62 @@ where
     }
 }
 
+impl<U, I: IntoIterator<Item = U>> From<I> for Each<U, I> {
+    fn from(from: I) -> Each<U, I> {
+        Each { items: from }
+    }
+}
+
 #[allow(non_snake_case)]
-pub fn Each<U>(
-    items: impl IntoIterator<Item = U>,
+pub fn Each<U, I: IntoIterator<Item = U>>(
+    items: impl Into<Each<U, I>>,
     callback: impl Fn(U, Document) -> Document,
 ) -> impl Render {
-    IterBlockComponent(Each::args(items), callback)
+    IterBlockComponent(items.into(), callback)
 }
+
+///
+
+/// A section that can be appended into a document. Sections are invisible, but
+/// can be targeted in stylesheets with selectors using their name.
+pub struct Section {
+    pub name: &'static str,
+}
+
+impl OnceBlockHelper for Section {
+    type Args = Section;
+    type Item = ();
+
+    fn args(args: Section) -> Section {
+        args
+    }
+
+    fn render(
+        self,
+        callback: impl FnOnce((), Document) -> Document,
+        mut into: Document,
+    ) -> Document {
+        into = into.add_node(Node::OpenSection(self.name));
+        into = callback((), into);
+        into.add_node(Node::CloseSection)
+    }
+}
+
+impl From<&'static str> for Section {
+    fn from(from: &'static str) -> Section {
+        Section { name: from }
+    }
+}
+
+#[allow(non_snake_case)]
+pub fn Section(
+    section: impl Into<Section>,
+    callback: impl FnOnce(Document) -> Document,
+) -> impl Render {
+    OnceBlockComponent(section.into(), |_, document| callback(document))
+}
+
+///
 
 /// Equivalent to [`Each`], but inserts a joiner between two adjacent elements.
 ///
@@ -157,8 +168,7 @@ pub fn Each<U>(
 /// let items = vec![Point(10, 20), Point(5, 10), Point(6, 42)];
 ///
 /// let document = Document::with(Join(
-///     &items,
-///     ", ",
+///     (&items, ", "),
 ///     |item, doc| doc.add("Point(").add(item.0).add(",").add(item.1).add(")")
 /// ));
 ///
@@ -172,13 +182,22 @@ pub struct Join<U, Iterator: IntoIterator<Item = U>> {
     pub joiner: &'static str,
 }
 
+impl<U, I: IntoIterator<Item = U>> From<(I, &'static str)> for Join<U, I> {
+    fn from(from: (I, &'static str)) -> Join<U, I> {
+        Join {
+            iterator: from.0,
+            joiner: from.1,
+        }
+    }
+}
+
 #[allow(non_snake_case)]
-pub fn Join<U, F, Iterator>(iterator: Iterator, joiner: &'static str, callback: F) -> impl Render
+pub fn Join<U, F, Iterator>(join: impl Into<Join<U, Iterator>>, callback: F) -> impl Render
 where
     F: Fn(U, Document) -> Document,
     Iterator: IntoIterator<Item = U>,
 {
-    IterBlockComponent(Join { iterator, joiner }, callback)
+    IterBlockComponent(join.into(), callback)
 }
 
 impl<'item, U, Iterator> IterBlockHelper for Join<U, Iterator>
@@ -215,20 +234,6 @@ where
 
 /// Inserts a line into a [`Document`]. The contents are inserted first, followed
 /// by a newline.
-#[derive(Default)]
-pub struct Line {
-    // Allows the <Line> component and Line() function to coexist.
-    // Maybe we can make the Line component use the Line function directly?
-    #[allow(dead_code)]
-    args: (),
-}
-
-impl SimpleBlockHelper for Line {
-    fn render(self, callback: impl FnOnce(Document) -> Document, into: Document) -> Document {
-        callback(into).add_node(Node::Newline)
-    }
-}
-
 #[allow(non_snake_case)]
 pub fn Line(item: impl Render) -> impl Render {
     OnceBlock(|document| item.render(document).add_node(Node::Newline))
@@ -239,7 +244,6 @@ mod tests {
 
     #[test]
     fn test_each() -> ::std::io::Result<()> {
-        use render_tree::{Document, Each, Line};
         struct Point(i32, i32);
 
         let items = &vec![Point(10, 20), Point(5, 10), Point(6, 42)][..];
@@ -262,7 +266,6 @@ mod tests {
 
     #[test]
     fn test_join() -> ::std::io::Result<()> {
-        use render_tree::Join;
         struct Point(i32, i32);
 
         let items = &vec![Point(10, 20), Point(5, 10), Point(6, 42)][..];

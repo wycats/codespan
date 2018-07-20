@@ -1,5 +1,34 @@
-use render_tree::helpers::IterBlockHelper;
 use render_tree::{Document, Render};
+
+pub trait OnceBlockHelper {
+    type Args;
+    type Item;
+
+    fn args(Self::Args) -> Self;
+
+    fn render(
+        self,
+        callback: impl FnOnce(Self::Item, Document) -> Document,
+        document: Document,
+    ) -> Document;
+}
+
+pub trait IterBlockHelper {
+    type Args;
+    type Item;
+
+    fn args(Self::Args) -> Self;
+
+    fn render(
+        self,
+        callback: impl Fn(Self::Item, Document) -> Document,
+        document: Document,
+    ) -> Document;
+}
+
+pub trait SimpleBlockHelper {
+    fn render(self, callback: impl FnOnce(Document) -> Document, document: Document) -> Document;
+}
 
 /// This trait defines a renderable entity with arguments. Types that implement
 /// `RenderComponent` can be packaged up together with their arguments in a
@@ -71,6 +100,30 @@ impl<Args> Render for Component<Args> {
     fn render(self, into: Document) -> Document {
         (self.component)(self.args, into)
     }
+}
+
+pub struct OnceBlockComponent<B: OnceBlockHelper, F: FnOnce(B::Item, Document) -> Document> {
+    helper: B,
+    callback: F,
+}
+
+impl<B, F> Render for OnceBlockComponent<B, F>
+where
+    B: OnceBlockHelper,
+    F: FnOnce(B::Item, Document) -> Document,
+{
+    fn render(self, into: Document) -> Document {
+        (self.helper).render(self.callback, into)
+    }
+}
+
+#[allow(non_snake_case)]
+pub fn OnceBlockComponent<B, F>(helper: B, callback: F) -> OnceBlockComponent<B, F>
+where
+    B: OnceBlockHelper,
+    F: FnOnce(B::Item, Document) -> Document,
+{
+    OnceBlockComponent { helper, callback }
 }
 
 pub struct IterBlockComponent<B: IterBlockHelper, F: Fn(B::Item, Document) -> Document> {

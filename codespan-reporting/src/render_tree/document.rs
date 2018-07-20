@@ -18,7 +18,7 @@ pub enum Node {
 /// one manually.
 ///
 /// ```
-/// use codespan_reporting::render_tree::{Document, Line, Render, Section};
+/// use codespan_reporting::render_tree::prelude::*;
 ///
 /// fn main() -> std::io::Result<()> {
 ///     let document = Document::empty()
@@ -30,8 +30,8 @@ pub enum Node {
 ///         .add(Line(
 ///             1.add(".").add(10)
 ///         ))
-///         .add(Section("code",
-///             "[E".add(1000).add("]")
+///         .add(Section("code", |doc|
+///             doc.add("[E").add(1000).add("]")
 ///         ));
 ///
 ///     assert_eq!(document.to_string()?, "Hello\n1.10\n[E1000]");
@@ -45,7 +45,7 @@ pub enum Node {
 /// ```
 /// #[macro_use]
 /// extern crate codespan_reporting;
-/// use codespan_reporting::render_tree::Line;
+/// use codespan_reporting::render_tree::prelude::*;
 ///
 /// fn main() -> std::io::Result<()> {
 ///     let document = tree! {
@@ -53,7 +53,7 @@ pub enum Node {
 ///         <Line as {
 ///             {1} "." {10}
 ///         }>
-///         <section name="code" as {
+///         <Section name="code" as {
 ///             "[E" {1000} "]"
 ///         }>
 ///     };
