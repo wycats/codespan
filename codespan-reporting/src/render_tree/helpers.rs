@@ -1,3 +1,4 @@
+use render_tree::component::SimpleBlockComponent;
 use render_tree::{Document, IterBlockComponent, Node, Render};
 use std::fmt;
 
@@ -85,8 +86,8 @@ pub trait SimpleBlockHelper {
 /// let items = vec![Point(10, 20), Point(5, 10), Point(6, 42)];
 ///
 /// let document = tree! {
-///     <Each {items} |item| {
-///         <line {
+///     <Each args={items} as |item| {
+///         <Line as {
 ///             "Point(" {item.0} "," {item.1} ")"
 ///         }>
 ///     }>
@@ -108,7 +109,7 @@ pub trait SimpleBlockHelper {
 //     BlockComponent(EachComponent, items, callback)
 // }
 pub struct Each<U, Iterator: IntoIterator<Item = U>> {
-    iterator: Iterator,
+    items: Iterator,
 }
 
 impl<'item, U, Iterator> IterBlockHelper for Each<U, Iterator>
@@ -118,8 +119,8 @@ where
     type Args = Iterator;
     type Item = U;
 
-    fn args(iterator: Iterator) -> Each<U, Iterator> {
-        Each { iterator }
+    fn args(items: Iterator) -> Each<U, Iterator> {
+        Each { items }
     }
 
     fn render(
@@ -127,7 +128,7 @@ where
         callback: impl Fn(Self::Item, Document) -> Document,
         mut into: Document,
     ) -> Document {
-        for item in self.iterator {
+        for item in self.items {
             into = callback(item, into);
         }
 
@@ -214,12 +215,23 @@ where
 
 /// Inserts a line into a [`Document`]. The contents are inserted first, followed
 /// by a newline.
-pub struct Line;
+#[derive(Default)]
+pub struct Line {
+    // Allows the <Line> component and Line() function to coexist.
+    // Maybe we can make the Line component use the Line function directly?
+    #[allow(dead_code)]
+    args: (),
+}
 
 impl SimpleBlockHelper for Line {
     fn render(self, callback: impl FnOnce(Document) -> Document, into: Document) -> Document {
         callback(into).add_node(Node::Newline)
     }
+}
+
+#[allow(non_snake_case)]
+pub fn Line(item: impl Render) -> impl Render {
+    SimpleBlockComponent(Line::default(), |document| item.render(document))
 }
 
 #[cfg(test)]
@@ -233,7 +245,7 @@ mod tests {
         let items = &vec![Point(10, 20), Point(5, 10), Point(6, 42)][..];
 
         let document = tree! {
-            <Each {items} |item| {
+            <Each args={items} as |item| {
                 <Line as {
                     "Point(" {item.0} "," {item.1} ")"
                 }>
@@ -256,7 +268,7 @@ mod tests {
         let items = &vec![Point(10, 20), Point(5, 10), Point(6, 42)][..];
 
         let document = tree! {
-            <Join iterator={items} joiner={"\n"} |item| {
+            <Join iterator={items} joiner={"\n"} as |item| {
                 "Point(" {item.0} "," {item.1} ")"
             }>
         };

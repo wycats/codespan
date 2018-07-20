@@ -45,14 +45,15 @@ pub enum Node {
 /// ```
 /// #[macro_use]
 /// extern crate codespan_reporting;
+/// use codespan_reporting::render_tree::Line;
 ///
 /// fn main() -> std::io::Result<()> {
 ///     let document = tree! {
-///         <line { "Hello" }>
-///         <line {
+///         <Line as { "Hello" }>
+///         <Line as {
 ///             {1} "." {10}
 ///         }>
-///         <section name="code" {
+///         <section name="code" as {
 ///             "[E" {1000} "]"
 ///         }>
 ///     };

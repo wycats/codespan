@@ -1,3 +1,4 @@
+#![recursion_limit = "1024"]
 #![feature(trace_macros)]
 
 extern crate codespan;

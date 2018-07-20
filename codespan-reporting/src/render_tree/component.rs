@@ -39,7 +39,7 @@ use render_tree::{Document, Render};
 ///         body: "This is the body of the message".to_string()
 ///     };
 ///
-///     let document = tree! { <Message {message}> };
+///     let document = tree! { <Message args={message}> };
 ///
 ///     document.write()
 /// }

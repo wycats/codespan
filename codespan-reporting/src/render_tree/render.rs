@@ -16,7 +16,7 @@ use super::{Document, Node, Section};
 /// #[macro_use]
 /// extern crate codespan_reporting;
 /// extern crate termcolor;
-/// use codespan_reporting::{Render, Document, RenderComponent};
+/// use codespan_reporting::{Render, Document, Line, RenderComponent};
 /// use std::time::Duration;
 /// use termcolor::StandardStream;
 ///
@@ -35,27 +35,27 @@ use super::{Document, Node, Section};
 ///     duration: Duration,
 /// }
 ///
-/// fn Message(args: MessageContents, into: Document) -> Document {
+/// fn message(args: MessageContents, into: Document) -> Document {
 ///     into.render(tree! {
-///         <line {
+///         <Line as {
 ///             {args.code} ":" {args.header} "for" {RenderDuration(args.duration)}
 ///         }>
 ///
-///         <line {
+///         <Line as {
 ///             {args.body}
 ///         }>
 ///     })
 /// }
 ///
 /// fn main() -> std::io::Result<()> {
-///     let message = MessageContents {
+///     let contents = MessageContents {
 ///         code: 200,
 ///         header: "Hello world".to_string(),
 ///         body: "This is the body of the message".to_string(),
 ///         duration: Duration::new(100, 1_000_000)
 ///     };
 ///
-///     let document = tree! { <Message {message}> };
+///     let document = tree! { <message args={contents}> };
 ///
 ///     document.write()
 /// }
@@ -188,6 +188,14 @@ where
 #[allow(non_snake_case)]
 pub fn SomeValue<'item, R: Render + Clone>(option: &'item Option<R>) -> impl Render + 'item {
     SomeValue { option }
+}
+
+pub struct Empty;
+
+impl Render for Empty {
+    fn render(self, document: Document) -> Document {
+        document
+    }
 }
 
 // /// An `&impl Render + Clone` is rendered by cloning the value and

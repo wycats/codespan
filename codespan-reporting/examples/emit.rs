@@ -1,4 +1,5 @@
 extern crate codespan;
+#[macro_use]
 extern crate codespan_reporting;
 #[macro_use]
 extern crate structopt;
@@ -29,6 +30,10 @@ pub struct Opts {
 #[allow(unused)]
 fn test(opts: Opts) {
     let mut writer = StandardStream::stderr(opts.color.into());
+
+    // let tree = tree! {
+    //     <Message args={foo}>
+    // };
 
     writer
         .set_color(
@@ -86,4 +91,6 @@ fn main() {
         emit(&mut writer.lock(), &code_map, &diagnostic).unwrap();
         println!();
     }
+
+    test(Opts::from_args());
 }

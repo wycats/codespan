@@ -14,18 +14,18 @@
 //! #[macro_use]
 //! extern crate codespan_reporting;
 //! extern crate termcolor;
-//! use codespan_reporting::{Document, RenderComponent};
+//! use codespan_reporting::{Document, Line, RenderComponent};
 //! use termcolor::StandardStream;
 //!
 //! fn main() -> std::io::Result<()> {
 //!     let world = "world";
 //!
 //!     let document = tree! {
-//!         <line {
+//!         <Line as {
 //!             "Hello" {world}
 //!         }>
 //!
-//!         <line {
+//!         <Line as {
 //!             "Goodbye" {world}
 //!         }>
 //!     };
@@ -48,20 +48,20 @@
 //! #[macro_use]
 //! extern crate codespan_reporting;
 //! extern crate termcolor;
-//! use codespan_reporting::{Document, RenderComponent, Stylesheet};
+//! use codespan_reporting::{Document, Line, RenderComponent, Stylesheet};
 //! use termcolor::StandardStream;
 //!
 //! fn main() -> std::io::Result<()> {
 //!     let world = "world";
 //!
 //!     let document = tree! {
-//!         <line {
-//!             <section name="hello" { "Hello" }>
+//!         <Line as {
+//!             <section name="hello" as { "Hello" }>
 //!             {world}
 //!         }>
 //!
-//!         <line {
-//!             <section name="goodbye" { "Goodbye"}>
+//!         <Line as {
+//!             <section name="goodbye" as { "Goodbye"}>
 //!             {world}
 //!         }>
 //!     };
@@ -91,27 +91,27 @@
 //! #[macro_use]
 //! extern crate codespan_reporting;
 //! extern crate termcolor;
-//! use codespan_reporting::{Document, RenderComponent, Stylesheet};
+//! use codespan_reporting::{Document, Line, RenderComponent, Stylesheet};
 //! use termcolor::StandardStream;
 //!
 //! fn main() -> std::io::Result<()> {
 //!     let world = "world";
 //!
 //!     let document = tree! {
-//!         <line {
-//!             <section name="hello-world" {
-//!                 <section name="greeting" { "Hello" }>
+//!         <Line as {
+//!             <section name="hello-world" as {
+//!                 <section name="greeting" as { "Hello" }>
 //!                 {world}
 //!             }>
 //!         }>
 //!
-//!         <line {
+//!         <Line as {
 //!             "Some content in the middle here"
 //!         }>
 //!
-//!         <line {
-//!             <section name="goodbye-world" {
-//!                 <section name="greeting" { "Goodbye" }>
+//!         <Line as {
+//!             <section name="goodbye-world" as {
+//!                 <section name="greeting" as { "Goodbye" }>
 //!                 {world}
 //!             }>
 //!         }>
@@ -209,5 +209,5 @@ pub(crate) mod utils;
 pub use self::component::*;
 pub use self::document::*;
 pub use self::helpers::*;
-pub use self::render::{Combine, IfSome, Render, SomeValue};
+pub use self::render::{Combine, Empty, IfSome, Render, SomeValue};
 pub use self::stylesheet::{Segment, Selector, Stylesheet};
