@@ -1,4 +1,4 @@
-use render_tree::helpers::{IterBlockHelper, SimpleBlockHelper};
+use render_tree::helpers::IterBlockHelper;
 use render_tree::{Document, Render};
 
 /// This trait defines a renderable entity with arguments. Types that implement
@@ -97,26 +97,13 @@ where
     IterBlockComponent { helper, callback }
 }
 
-pub struct SimpleBlockComponent<B: SimpleBlockHelper, F: FnOnce(Document) -> Document> {
-    helper: B,
-    callback: F,
-}
+pub struct OnceBlock<F: FnOnce(Document) -> Document>(pub F);
 
-impl<B, F> Render for SimpleBlockComponent<B, F>
+impl<F> Render for OnceBlock<F>
 where
-    B: SimpleBlockHelper,
     F: FnOnce(Document) -> Document,
 {
     fn render(self, into: Document) -> Document {
-        (self.helper).render(self.callback, into)
+        (self.0)(into)
     }
-}
-
-#[allow(non_snake_case)]
-pub fn SimpleBlockComponent<B, F>(helper: B, callback: F) -> SimpleBlockComponent<B, F>
-where
-    B: SimpleBlockHelper,
-    F: FnOnce(Document) -> Document,
-{
-    SimpleBlockComponent { helper, callback }
 }

@@ -1,5 +1,4 @@
 extern crate codespan;
-#[macro_use]
 extern crate codespan_reporting;
 #[macro_use]
 extern crate structopt;

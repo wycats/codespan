@@ -388,16 +388,12 @@ macro_rules! block_component {
         args = $args:tt
         rest = [[ { $($block:tt)* }> $($rest:tt)* ]]
     } => {{
-        use $crate::render_tree::{Render, Document};
-
         let inner = tree! {
             trace = [ $($trace)* { inner tree } ]
             rest = [[ $($block)* ]]
         };
 
-        let component = $crate::render_tree::SimpleBlockComponent(
-            $name::default(), |doc: Document| -> Document { inner.render(doc) }
-        );
+        let component = $name(inner);
 
         let rest = tree! {
             trace = [ $($trace)* { rest tree } ]

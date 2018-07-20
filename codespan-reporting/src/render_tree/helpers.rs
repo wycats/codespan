@@ -1,4 +1,4 @@
-use render_tree::component::SimpleBlockComponent;
+use render_tree::component::OnceBlock;
 use render_tree::{Document, IterBlockComponent, Node, Render};
 use std::fmt;
 
@@ -231,7 +231,7 @@ impl SimpleBlockHelper for Line {
 
 #[allow(non_snake_case)]
 pub fn Line(item: impl Render) -> impl Render {
-    SimpleBlockComponent(Line::default(), |document| item.render(document))
+    OnceBlock(|document| item.render(document).add_node(Node::Newline))
 }
 
 #[cfg(test)]
@@ -239,7 +239,7 @@ mod tests {
 
     #[test]
     fn test_each() -> ::std::io::Result<()> {
-        use render_tree::{Document, Each, Line, Render};
+        use render_tree::{Document, Each, Line};
         struct Point(i32, i32);
 
         let items = &vec![Point(10, 20), Point(5, 10), Point(6, 42)][..];
@@ -262,7 +262,7 @@ mod tests {
 
     #[test]
     fn test_join() -> ::std::io::Result<()> {
-        use render_tree::{Document, Join, Render};
+        use render_tree::Join;
         struct Point(i32, i32);
 
         let items = &vec![Point(10, 20), Point(5, 10), Point(6, 42)][..];
