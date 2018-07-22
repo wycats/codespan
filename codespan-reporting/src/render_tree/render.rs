@@ -94,22 +94,6 @@ impl Render for Node {
     }
 }
 
-// /// A String is rendered by turning itself into a text node and adding the
-// /// text node into the document.
-// impl Render for String {
-//     fn render(self, document: Document) -> Document {
-//         document.add_node(Node::Text(self))
-//     }
-// }
-
-// /// A &str is rendered by turning itself into a String and rendering the
-// /// String.
-// impl<'a> Render for &'a str {
-//     fn render(self, document: Document) -> Document {
-//         self.to_string().render(document)
-//     }
-// }
-
 /// A Document is rendered by extending its nodes onto the original
 /// document.
 impl Render for Document {
@@ -189,17 +173,6 @@ impl Render for Empty {
         document
     }
 }
-
-// /// An `&impl Render + Clone` is rendered by cloning the value and
-// /// rendering it.
-// impl<'a, T> Render for &'a T
-// where
-//     T: Render + Clone,
-// {
-//     fn render(self, document: Document) -> Document {
-//         self.clone().render(document)
-//     }
-// }
 
 impl<T: ::std::fmt::Display> Render for T {
     fn render(self, document: Document) -> Document {

@@ -1,87 +1,122 @@
-#[doc(hidden)]
-#[macro_export]
-macro_rules! unexpected_token {
-    ($message:expr,trace = $trace:tt,tokens = $token:tt $($tokens:tt)*) => {{
-        force_mismatch!($token);
-        macro_trace!($message, $trace);
-    }};
-
-    ($message:expr,trace = $trace:tt,tokens =) => {{
-        unexpected_eof!($message, $trace);
-    }};
-
-    ($($rest:tt)*) => {{
-        compile_error!("Invalid call to unexpected_token");
-    }};
-}
-
-#[doc(hidden)]
-#[allow(unused_macros)]
-#[macro_export]
-macro_rules! macro_trace {
-    ($message:expr, [ $({ $($trace:tt)* })* ]) => {{
-        compile_error!(concat!(
-            $message,
-            "\nMacro trace: ",
-
-            $(
-                $(
-                    stringify!($trace),
-                    " ",
-                )*
-                "-> ",
-            )*
-        ))
-    }};
-}
-
-#[doc(hidden)]
-#[macro_export]
-macro_rules! force_mismatch {
-    () => {};
-}
-
-#[doc(hidden)]
-#[macro_export]
-macro_rules! unimplemented_branch {
-    ($message:expr, trace = $trace:tt,tokens = $($tokens:tt)*) => {{
-        unexpected_token!(concat!("Unimplemented branch: ", $message), trace = $trace, tokens = $($tokens)*);
-    }};
-
-    ($($rest:tt)*) => {{
-        compile_error("Invalid call to unimplemented_branch");
-    }}
-}
-
-#[doc(hidden)]
-#[macro_export]
-macro_rules! unexpected_eof {
-     { $message:expr, trace = [ $($trace:tt)* ] } => {
-        compile_error!(concat!("Unexpected end of block: ", $message, "\nMacro trace: ", stringify!($($trace)*)))
-    };
-
-    ($($rest:tt)*) => {{
-        compile_error("Invalid call to unexpected_eof");
-    }}
-}
-
-#[macro_export]
-macro_rules! concat_trees {
-    ($left:tt,()) => {
-        $left
-    };
-
-    ((), $right:tt) => {
-        $right
-    };
-
-    ($left:tt, $right:tt) => {{
-        $crate::render_tree::Document::empty()
-            .add($left)
-            .add($right)
-    }};
-}
-
+/// This macro builds a [`Document`] using nested syntax.
+///
+/// # Inline values using `{...}` syntax
+///
+/// You can insert any [`Render`] value into a document using `{...}` syntax.
+///
+/// ```
+/// # #[macro_use]
+/// # extern crate codespan_reporting;
+/// #
+/// # fn main() -> ::std::io::Result<()> {
+/// use codespan_reporting::render_tree::prelude::*;
+///
+/// let hello = "hello";
+/// let world = format!("world");
+/// let title = ". The answer is ";
+/// let answer = 42;
+///
+/// let document = tree! {
+///     {hello} {" "} {world} {". The answer is "} {answer}
+/// };
+///
+/// assert_eq!(document.to_string()?, "hello world. The answer is 42");
+/// #
+/// # Ok(())
+/// # }
+/// ```
+///
+/// Built-in types that implement render include:
+///
+/// - Anything that implements `Display` (including String, &str, the number types, etc.).
+///   The text value is inserted into the document.
+/// - Other [`Document`]s, which are concatenated onto the document.
+/// - A [`SomeValue`] adapter that takes an `Option<impl Renderable>` and inserts its inner
+///   value if present.
+/// - An `Empty` value that adds nothing to the document.
+///
+/// # Inline Components
+///
+/// You can create components to encapsulate some logic:
+///
+/// ```
+/// # #[macro_use]
+/// # extern crate codespan_reporting;
+/// use codespan_reporting::render_tree::prelude::*;
+///
+/// struct Header {
+///     code: usize,
+///     message: &'static str,
+/// }
+///
+/// impl Render for Header {
+///     fn render(self, document: Document) -> Document {
+///         document.add(tree! {
+///             {self.code} {": "} {self.message}
+///         })
+///     }
+/// }
+///
+/// # fn main() -> ::std::io::Result<()> {
+/// let code = 1;
+/// let message = "Something went wrong";
+///
+/// let document = tree! {
+///     <Header code={code} message={message}>
+/// };
+///
+/// // assert_eq!(document.to_string(), "1: Something went wrong");
+/// #
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Block Components
+///
+/// You can also build components that take a block.
+///
+/// You can create components to encapsulate some logic:
+///
+/// ```
+/// # #[macro_use]
+/// # extern crate codespan_reporting;
+/// use codespan_reporting::render_tree::prelude::*;
+///
+/// struct Message {
+///     code: usize,
+///     message: &'static str,
+///     trailing: &'static str,
+/// }
+///
+/// impl BlockComponent for Message {
+///     fn append(self, block: impl FnOnce(Document) -> Document, mut document: Document) -> Document {
+///         document = document.add(tree! {
+///             {self.code} {": "} {self.message}
+///         });
+///
+///         document = block(document);
+///
+///         document.add(tree! {
+///             {self.trailing}
+///         })
+///     }
+/// }
+///
+/// # fn main() -> ::std::io::Result<()> {
+/// let code = 1;
+/// let message = "Something went wrong";
+///
+/// let document = tree! {
+///     <Message code={code} message={message} trailing={" -- yikes!"} as {
+///         {"!!! It's really quite bad !!!"}
+///     }>
+/// };
+///
+/// // assert_eq!(document.to_string(), "1: Something went wrong");
+/// #
+/// # Ok(())
+/// # }
+/// ```
 #[macro_export]
 macro_rules! tree {
     // We're effectively handling patterns of matched delimiters that aren't intrinsically
@@ -163,9 +198,96 @@ macro_rules! tree {
 
 #[doc(hidden)]
 #[macro_export]
+macro_rules! unexpected_token {
+    ($message:expr,trace = $trace:tt,tokens = $token:tt $($tokens:tt)*) => {{
+        force_mismatch!($token);
+        macro_trace!($message, $trace);
+    }};
+
+    ($message:expr,trace = $trace:tt,tokens =) => {{
+        unexpected_eof!($message, $trace);
+    }};
+
+    ($($rest:tt)*) => {{
+        compile_error!("Invalid call to unexpected_token");
+    }};
+}
+
+#[doc(hidden)]
+#[allow(unused_macros)]
+#[macro_export]
+macro_rules! macro_trace {
+    ($message:expr, [ $({ $($trace:tt)* })* ]) => {{
+        compile_error!(concat!(
+            $message,
+            "\nMacro trace: ",
+
+            $(
+                $(
+                    stringify!($trace),
+                    " ",
+                )*
+                "-> ",
+            )*
+        ))
+    }};
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! force_mismatch {
+    () => {};
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! unimplemented_branch {
+    ($message:expr, trace = $trace:tt,tokens = $($tokens:tt)*) => {{
+        unexpected_token!(concat!("Unimplemented branch: ", $message), trace = $trace, tokens = $($tokens)*);
+    }};
+
+    ($($rest:tt)*) => {{
+        compile_error("Invalid call to unimplemented_branch");
+    }}
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! unexpected_eof {
+     { $message:expr, trace = [ $($trace:tt)* ] } => {
+        compile_error!(concat!("Unexpected end of block: ", $message, "\nMacro trace: ", stringify!($($trace)*)))
+    };
+
+    ($($rest:tt)*) => {{
+        compile_error("Invalid call to unexpected_eof");
+    }}
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! concat_trees {
+    ($left:tt,()) => {
+        $left
+    };
+
+    ((), $right:tt) => {
+        $right
+    };
+
+    ($left:tt, $right:tt) => {{
+        use $crate::render_tree::prelude::*;
+
+        let mut document = Document::empty();
+        document = $left.render(document);
+        document = $right.render(document);
+
+        document
+    }};
+}
+
+#[doc(hidden)]
+#[macro_export]
 macro_rules! tagged_element {
-    // The `key={value}` syntax is only compatible with block-based components,
-    // so if we see a `>` at this point, it's an error.
     {
         trace = [ $($trace:tt)* ]
         name = $name:tt
@@ -174,30 +296,34 @@ macro_rules! tagged_element {
     } => {{
         let left = $crate::render_tree::Component($name, $value);
 
-        let right = tree! {
+        let rest =  tree! {
             trace = [ $($trace)* { rest tree } ]
             rest = [[ $($rest)* ]]
         };
 
-        concat_trees!(left, right)
+        concat_trees!(left, rest)
     }};
 
     // The `key={value}` syntax is only compatible with block-based components,
     // so if we see a `>` at this point, it's an error.
     {
-        trace = $trace:tt
+        trace = [ $($trace:tt)* ]
         name = $name:tt
-        args = [ { $key:ident = $value:tt } $({ $keys:ident = $values:tt })* ]
+        args = [ $({ $key:ident = $value:tt })* ]
         rest = [[ > $($rest:tt)*]]
     } => {{
-        unexpected_token!(
-            concat!(
-                "Only block-based components take keys and values as arguments. Pass arguments to inline components as `args={...}`",
-                stringify!($key = $value, $($keys = $values),* )
-            ),
-            trace = $trace,
-            tokens = $key
-        );
+        let component = $name {
+            $(
+                $key: $value,
+            )*
+        };
+
+        let rest = tree! {
+            trace = [ $($trace)* { rest tree } ]
+            rest = [[ $($rest)* ]]
+        };
+
+        concat_trees!(component, rest)
     }};
 
     // Triage the next token into a "double token" because it may indicate an
@@ -327,7 +453,7 @@ macro_rules! tagged_element_value {
                 stringify!($value),
                 "}`?"
             ),
-            trace = $trace,    
+            trace = $trace,
             tokens = $value
         );
     };
@@ -394,35 +520,6 @@ macro_rules! block_component {
         concat_trees!(component, rest)
     }};
 
-    // Otherwise, if the args were the special-case of `args={...}`, construct
-    // the argument object by calling Component::args($args). Then, call
-    // IterBlockComponent with the args and a closure that takes the
-    // component-supplied argument.
-    {
-        trace = [ $($trace:tt)* ]
-        name = $name:tt
-        args = [ { args = $args:tt } ]
-        rest = [[ |$id:tt| { $($inner:tt)* }> $($rest:tt)* ]]
-    } => {{
-        use $crate::render_tree::prelude::*;
-
-        let block = $crate::render_tree::IterBlockComponent(
-            $name::args($args), |$id, doc: Document| -> Document {
-                (tree! {
-                    trace = [ $($trace)* { inner tree } ]
-                    rest = [[ $($inner)* ]]
-                }).render(doc)
-            }
-        );
-
-        let rest = tree! {
-            trace = [ $($trace)* { rest tree } ]
-            rest = [[ $($rest)* ]]
-        };
-
-        concat_trees!(block, rest)
-    }};
-
     // Otherwise, if there were arguments and closure parameters, construct
     // the argument object with the component's name and supplied arguments.
     // Then, call the component function with the constructed object and a
@@ -441,7 +538,7 @@ macro_rules! block_component {
             ),*
         };
 
-        let block = $name(
+        let block = $name::with(
             component, |$id, doc: Document| -> Document {
                 (tree! {
                     trace = [ $($trace)* { inner tree } ]
@@ -469,17 +566,20 @@ macro_rules! block_component {
     } => {{
         use $crate::render_tree::prelude::*;
 
-        let component = $name {
+        let data = $name {
             $(
                 $key: $value,
             )*
         };
 
-        let block = $name(
-            component, |doc: Document| -> Document { ( tree! {
-            trace = [ $($trace)* { inner tree } ]
-            rest = [[ $($block)* ]]
-        }).render(doc) });
+        let block = |document: Document| -> Document {
+            (tree! {
+                trace = [ $($trace)* { inner tree } ]
+                rest = [[ $($block)* ]]
+            }).render(document)
+        };
+
+        let component = $crate::render_tree::BlockComponent::with(data, block);
 
 
         let rest = tree! {
@@ -487,7 +587,7 @@ macro_rules! block_component {
             rest = [[ $($rest)* ]]
         };
 
-        concat_trees!(block, rest)
+        concat_trees!(component, rest)
     }};
 
     {
@@ -498,4 +598,22 @@ macro_rules! block_component {
     } => {
         unexpected_token!("Expected a block or closure parameters after `as`", trace = $trace, tokens=$($rest)*)
     };
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn basic_usage() -> ::std::io::Result<()> {
+        let hello = "hello";
+        let world = format!("world");
+        let answer = 42;
+
+        let document = tree! {
+            {hello} {" "} {world} {". The answer is "} {answer}
+        };
+
+        assert_eq!(document.to_string()?, "hello world. The answer is 42");
+
+        Ok(())
+    }
 }

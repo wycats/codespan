@@ -1,33 +1,115 @@
 use render_tree::{Document, Render};
 
-pub trait OnceBlockHelper {
-    type Args;
+pub trait BlockComponent: Sized {
+    fn with<F: FnOnce(Document) -> Document>(
+        component: Self,
+        block: F,
+    ) -> CurriedBlockComponent<Self, F> {
+        CurriedBlockComponent { component, block }
+    }
+
+    fn append(self, block: impl FnOnce(Document) -> Document, document: Document) -> Document;
+}
+
+pub struct CurriedBlockComponent<B: BlockComponent, Block: FnOnce(Document) -> Document> {
+    component: B,
+    block: Block,
+}
+
+impl<B: BlockComponent, Block: FnOnce(Document) -> Document> Render
+    for CurriedBlockComponent<B, Block>
+{
+    fn render(self, document: Document) -> Document {
+        (self.component).append(self.block, document)
+    }
+}
+
+// IterBlockComponent //
+
+pub trait IterBlockComponent: Sized {
     type Item;
 
-    fn args(Self::Args) -> Self;
+    fn with<F: FnMut(Self::Item, Document) -> Document>(
+        component: Self,
+        block: F,
+    ) -> CurriedIterBlockComponent<Self, F> {
+        CurriedIterBlockComponent { component, block }
+    }
 
-    fn render(
+    fn append(
         self,
-        callback: impl FnOnce(Self::Item, Document) -> Document,
+        block: impl FnMut(Self::Item, Document) -> Document,
         document: Document,
     ) -> Document;
 }
 
-pub trait IterBlockHelper {
-    type Args;
+pub struct CurriedIterBlockComponent<
+    B: IterBlockComponent,
+    Block: FnMut(B::Item, Document) -> Document,
+> {
+    component: B,
+    block: Block,
+}
+
+impl<B: IterBlockComponent, Block: FnMut(B::Item, Document) -> Document> Render
+    for CurriedIterBlockComponent<B, Block>
+{
+    fn render(self, document: Document) -> Document {
+        (self.component).append(self.block, document)
+    }
+}
+
+// OnceBlockComponent //
+
+pub trait OnceBlockComponent: Sized {
     type Item;
 
-    fn args(Self::Args) -> Self;
+    fn with<F: FnOnce(Self::Item, Document) -> Document>(
+        component: Self,
+        block: F,
+    ) -> CurriedOnceBlockComponent<Self, F> {
+        CurriedOnceBlockComponent { component, block }
+    }
 
-    fn render(
+    fn append(
         self,
-        callback: impl Fn(Self::Item, Document) -> Document,
+        block: impl FnOnce(Self::Item, Document) -> Document,
         document: Document,
     ) -> Document;
 }
 
-pub trait SimpleBlockHelper {
-    fn render(self, callback: impl FnOnce(Document) -> Document, document: Document) -> Document;
+pub struct CurriedOnceBlockComponent<
+    B: OnceBlockComponent,
+    Block: FnOnce(B::Item, Document) -> Document,
+> {
+    component: B,
+    block: Block,
+}
+
+impl<B: OnceBlockComponent, Block: FnOnce(B::Item, Document) -> Document> Render
+    for CurriedOnceBlockComponent<B, Block>
+{
+    fn render(self, document: Document) -> Document {
+        (self.component).append(self.block, document)
+    }
+}
+
+// InlineComponent //
+
+struct CurriedInlineComponent<T> {
+    function: fn(T, Document) -> Document,
+    data: T,
+}
+
+impl<T> Render for CurriedInlineComponent<T> {
+    fn render(self, document: Document) -> Document {
+        (self.function)(self.data, document)
+    }
+}
+
+#[allow(non_snake_case)]
+pub fn Component<T>(function: fn(T, Document) -> Document, data: T) -> impl Render {
+    CurriedInlineComponent { function, data }
 }
 
 /// This trait defines a renderable entity with arguments. Types that implement
@@ -79,77 +161,6 @@ pub trait RenderComponent<'args> {
     fn render(&self, args: Self::Args, into: Document) -> Document;
 }
 
-type ComponentFn<Args> = fn(Args, Document) -> Document;
-
-/// A Component is an instance of RenderComponent and its args. Component
-/// implements Render, so it can be added to a document during the render
-/// process.
-pub struct Component<Args> {
-    component: ComponentFn<Args>,
-    args: Args,
-}
-
-#[allow(non_snake_case)]
-pub fn Component<Args>(component: ComponentFn<Args>, args: Args) -> Component<Args> {
-    Component { component, args }
-}
-
-/// A Component is rendered by calling the component's render with
-/// its args.
-impl<Args> Render for Component<Args> {
-    fn render(self, into: Document) -> Document {
-        (self.component)(self.args, into)
-    }
-}
-
-pub struct OnceBlockComponent<B: OnceBlockHelper, F: FnOnce(B::Item, Document) -> Document> {
-    helper: B,
-    callback: F,
-}
-
-impl<B, F> Render for OnceBlockComponent<B, F>
-where
-    B: OnceBlockHelper,
-    F: FnOnce(B::Item, Document) -> Document,
-{
-    fn render(self, into: Document) -> Document {
-        (self.helper).render(self.callback, into)
-    }
-}
-
-#[allow(non_snake_case)]
-pub fn OnceBlockComponent<B, F>(helper: B, callback: F) -> OnceBlockComponent<B, F>
-where
-    B: OnceBlockHelper,
-    F: FnOnce(B::Item, Document) -> Document,
-{
-    OnceBlockComponent { helper, callback }
-}
-
-pub struct IterBlockComponent<B: IterBlockHelper, F: Fn(B::Item, Document) -> Document> {
-    helper: B,
-    callback: F,
-}
-
-impl<B, F> Render for IterBlockComponent<B, F>
-where
-    B: IterBlockHelper,
-    F: Fn(B::Item, Document) -> Document,
-{
-    fn render(self, into: Document) -> Document {
-        (self.helper).render(self.callback, into)
-    }
-}
-
-#[allow(non_snake_case)]
-pub fn IterBlockComponent<B, F>(helper: B, callback: F) -> IterBlockComponent<B, F>
-where
-    B: IterBlockHelper,
-    F: Fn(B::Item, Document) -> Document,
-{
-    IterBlockComponent { helper, callback }
-}
-
 pub struct OnceBlock<F: FnOnce(Document) -> Document>(pub F);
 
 impl<F> Render for OnceBlock<F>
@@ -158,5 +169,131 @@ where
 {
     fn render(self, into: Document) -> Document {
         (self.0)(into)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use render_tree::prelude::*;
+
+    #[test]
+    fn test_inline_component() -> ::std::io::Result<()> {
+        struct Header {
+            code: usize,
+            message: &'static str,
+        }
+
+        impl Render for Header {
+            fn render(self, document: Document) -> Document {
+                document.add(tree! {
+                    {self.code} {": "} {self.message}
+                })
+            }
+        }
+
+        let code = 1;
+        let message = "Something went wrong";
+
+        let document = tree! {
+            <Header code={code} message={message}>
+        };
+
+        assert_eq!(document.to_string()?, "1: Something went wrong");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_block_component() -> ::std::io::Result<()> {
+        struct Message {
+            code: usize,
+            message: &'static str,
+            trailing: &'static str,
+        }
+
+        impl BlockComponent for Message {
+            fn append(
+                self,
+                block: impl FnOnce(Document) -> Document,
+                mut document: Document,
+            ) -> Document {
+                document = document.add(tree! {
+                    {self.code} {": "} {self.message} {" "}
+                });
+
+                document = block(document);
+
+                document = document.add(tree! {
+                    {self.trailing}
+                });
+
+                document
+            }
+        }
+
+        let code = 1;
+        let message = "Something went wrong";
+
+        let document = tree! {
+            <Message code={code} message={message} trailing={" -- yikes!"} as {
+                {"!!! It's really quite bad !!!"}
+            }>
+        };
+
+        assert_eq!(
+            document.to_string()?,
+            "1: Something went wrong !!! It's really quite bad !!! -- yikes!"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_once_block_component() -> ::std::io::Result<()> {
+        struct Message {
+            code: usize,
+            message: Option<&'static str>,
+            trailing: &'static str,
+        }
+
+        impl OnceBlockComponent for Message {
+            type Item = String;
+
+            fn append(
+                self,
+                block: impl FnOnce(String, Document) -> Document,
+                mut document: Document,
+            ) -> Document {
+                document = document.add(tree! {
+                    {self.code} {": "}
+                });
+
+                if let Some(message) = self.message {
+                    document = block(message.to_string(), document);
+                }
+
+                document = document.add(tree! {
+                    {" "} {self.trailing}
+                });
+
+                document
+            }
+        }
+
+        let code = 1;
+        let message = Some("Something went wrong");
+
+        let document = tree! {
+            <Message code={code} message={message} trailing={"-- yikes!"} as |message| {
+                {message} {" "} {"!!! It's really quite bad !!!"}
+            }>
+        };
+
+        assert_eq!(
+            document.to_string()?,
+            "1: Something went wrong !!! It's really quite bad !!! -- yikes!"
+        );
+
+        Ok(())
     }
 }

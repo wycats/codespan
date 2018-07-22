@@ -1,5 +1,5 @@
-use render_tree::component::{IterBlockHelper, OnceBlock, OnceBlockComponent, OnceBlockHelper};
-use render_tree::{Document, IterBlockComponent, Node, Render};
+use render_tree::component::OnceBlock;
+use render_tree::{BlockComponent, Document, IterBlockComponent, Node, Render};
 use std::fmt;
 
 /// Creates a `Render` that, when appended into a [`Document`], repeats
@@ -57,7 +57,7 @@ impl<T: fmt::Display> fmt::Display for PadItem<T> {
 /// let items = vec![Point(10, 20), Point(5, 10), Point(6, 42)];
 ///
 /// let document = tree! {
-///     <Each args={items} as |item| {
+///     <Each items={items} as |item| {
 ///         <Line as {
 ///             "Point(" {item.0} "," {item.1} ")"
 ///         }>
@@ -71,32 +71,53 @@ impl<T: fmt::Display> fmt::Display for PadItem<T> {
 /// ```
 
 pub struct Each<U, Iterator: IntoIterator<Item = U>> {
-    items: Iterator,
+    pub items: Iterator,
 }
 
-impl<'item, U, Iterator> IterBlockHelper for Each<U, Iterator>
-where
-    Iterator: IntoIterator<Item = U>,
-{
-    type Args = Iterator;
+impl<U, Iterator: IntoIterator<Item = U>> IterBlockComponent for Each<U, Iterator> {
     type Item = U;
 
-    fn args(items: Iterator) -> Each<U, Iterator> {
-        Each { items }
-    }
-
-    fn render(
+    fn append(
         self,
-        callback: impl Fn(Self::Item, Document) -> Document,
-        mut into: Document,
+        mut block: impl FnMut(U, Document) -> Document,
+        mut document: Document,
     ) -> Document {
         for item in self.items {
-            into = callback(item, into);
+            document = block(item, document);
         }
 
-        into
+        document
+
+        // document = document.add(Node::OpenSection(self.name));
+        // document = block(document);
+        // document = document.add(Node::CloseSection);
+        // document
     }
 }
+
+// impl<'item, U, Iterator> IterBlockHelper for Each<U, Iterator>
+// where
+//     Iterator: IntoIterator<Item = U>,
+// {
+//     type Args = Iterator;
+//     type Item = U;
+
+//     fn args(items: Iterator) -> Each<U, Iterator> {
+//         Each { items }
+//     }
+
+//     fn render(
+//         self,
+//         callback: impl Fn(Self::Item, Document) -> Document,
+//         mut into: Document,
+//     ) -> Document {
+//         for item in self.items {
+//             into = callback(item, into);
+//         }
+
+//         into
+//     }
+// }
 
 impl<U, I: IntoIterator<Item = U>> From<I> for Each<U, I> {
     fn from(from: I) -> Each<U, I> {
@@ -109,7 +130,7 @@ pub fn Each<U, I: IntoIterator<Item = U>>(
     items: impl Into<Each<U, I>>,
     callback: impl Fn(U, Document) -> Document,
 ) -> impl Render {
-    IterBlockComponent(items.into(), callback)
+    IterBlockComponent::with(items.into(), callback)
 }
 
 ///
@@ -120,38 +141,58 @@ pub struct Section {
     pub name: &'static str,
 }
 
-impl OnceBlockHelper for Section {
-    type Args = Section;
-    type Item = ();
-
-    fn args(args: Section) -> Section {
-        args
-    }
-
-    fn render(
-        self,
-        callback: impl FnOnce((), Document) -> Document,
-        mut into: Document,
-    ) -> Document {
-        into = into.add_node(Node::OpenSection(self.name));
-        into = callback((), into);
-        into.add_node(Node::CloseSection)
-    }
-}
-
-impl From<&'static str> for Section {
-    fn from(from: &'static str) -> Section {
-        Section { name: from }
+impl BlockComponent for Section {
+    fn append(self, block: impl FnOnce(Document) -> Document, mut document: Document) -> Document {
+        document = document.add(Node::OpenSection(self.name));
+        document = block(document);
+        document = document.add(Node::CloseSection);
+        document
     }
 }
 
 #[allow(non_snake_case)]
-pub fn Section(
-    section: impl Into<Section>,
-    callback: impl FnOnce(Document) -> Document,
-) -> impl Render {
-    OnceBlockComponent(section.into(), |_, document| callback(document))
+pub fn Section(name: &'static str, block: impl FnOnce(Document) -> Document) -> Document {
+    let document = Document::empty();
+    Section { name }.append(block, document)
 }
+
+// impl OnceBlockHelper for Section {
+//     type Args = Section;
+//     type Item = ();
+
+//     fn args(args: Section) -> Section {
+//         args
+//     }
+
+//     fn render(
+//         self,
+//         callback: impl FnOnce((), Document) -> Document,
+//         mut into: Document,
+//     ) -> Document {
+//         into = into.add_node(Node::OpenSection(self.name));
+//         into = callback((), into);
+//         into.add_node(Node::CloseSection)
+//     }
+// }
+
+// impl From<&'static str> for Section {
+//     fn from(from: &'static str) -> Section {
+//         Section { name: from }
+//     }
+// }
+
+// #[allow(non_snake_case)]
+// pub fn Section(
+//     section: impl Into<Section>,
+//     block: impl FnOnce(Document) -> Document,
+//     mut document: Document,
+// ) -> Document {
+//     let section = section.into();
+//     document = document.add(Node::OpenSection(section.name));
+//     document = block(document);
+//     document = document.add(Node::CloseSection);
+//     document
+// }
 
 ///
 
@@ -197,23 +238,18 @@ where
     F: Fn(U, Document) -> Document,
     Iterator: IntoIterator<Item = U>,
 {
-    IterBlockComponent(join.into(), callback)
+    IterBlockComponent::with(join.into(), callback)
 }
 
-impl<'item, U, Iterator> IterBlockHelper for Join<U, Iterator>
+impl<'item, U, Iterator> IterBlockComponent for Join<U, Iterator>
 where
     Iterator: IntoIterator<Item = U>,
 {
-    type Args = Join<U, Iterator>;
     type Item = U;
 
-    fn args(join: Join<U, Iterator>) -> Join<U, Iterator> {
-        join
-    }
-
-    fn render(
+    fn append(
         self,
-        callback: impl Fn(Self::Item, Document) -> Document,
+        mut block: impl FnMut(Self::Item, Document) -> Document,
         mut into: Document,
     ) -> Document {
         let mut is_first = true;
@@ -225,7 +261,7 @@ where
                 into = into.add(self.joiner);
             }
 
-            into = callback(item, into);
+            into = block(item, into);
         }
 
         into
@@ -249,7 +285,7 @@ mod tests {
         let items = &vec![Point(10, 20), Point(5, 10), Point(6, 42)][..];
 
         let document = tree! {
-            <Each args={items} as |item| {
+            <Each items={items} as |item| {
                 <Line as {
                     "Point(" {item.0} "," {item.1} ")"
                 }>

@@ -220,5 +220,5 @@ pub mod prelude {
 pub use self::component::*;
 pub use self::document::*;
 pub use self::helpers::*;
-pub use self::render::{Combine, Empty, IfSome, Render, SomeValue};
+pub use self::render::*;
 pub use self::stylesheet::{Segment, Selector, Stylesheet};
