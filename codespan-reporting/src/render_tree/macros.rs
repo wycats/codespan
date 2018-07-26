@@ -65,7 +65,7 @@
 ///     <Header code={code} message={message}>
 /// };
 ///
-/// // assert_eq!(document.to_string(), "1: Something went wrong");
+/// assert_eq!(document.to_string()?, "1: Something went wrong");
 /// #
 /// # Ok(())
 /// # }
@@ -73,9 +73,8 @@
 ///
 /// # Block Components
 ///
-/// You can also build components that take a block.
-///
-/// You can create components to encapsulate some logic:
+/// You can also build components that take a block that runs exactly
+/// once (an `FnOnce`).
 ///
 /// ```
 /// # #[macro_use]
@@ -89,16 +88,22 @@
 /// }
 ///
 /// impl BlockComponent for Message {
-///     fn append(self, block: impl FnOnce(Document) -> Document, mut document: Document) -> Document {
+///     fn append(
+///         self,
+///         block: impl FnOnce(Document) -> Document,
+///         mut document: Document,
+///     ) -> Document {
 ///         document = document.add(tree! {
-///             {self.code} {": "} {self.message}
+///             {self.code} {": "} {self.message} {" "}
 ///         });
 ///
 ///         document = block(document);
 ///
-///         document.add(tree! {
+///         document = document.add(tree! {
 ///             {self.trailing}
-///         })
+///         });
+///
+///         document
 ///     }
 /// }
 ///
@@ -112,8 +117,54 @@
 ///     }>
 /// };
 ///
-/// // assert_eq!(document.to_string(), "1: Something went wrong");
+/// assert_eq!(document.to_string()?, "1: Something went wrong !!! It's really quite bad !!! -- yikes!");
 /// #
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Iterators
+///
+/// Finally, you can create components that take a block and call the block
+/// multiple times (an iterator).
+///
+/// ```
+/// # #[macro_use]
+/// # extern crate codespan_reporting;
+/// #
+/// use codespan_reporting::render_tree::prelude::*;
+/// use std::io;
+///
+/// pub struct UpcaseAll<Iterator: IntoIterator<Item = String>> {
+///     pub items: Iterator,
+/// }
+///
+/// impl<Iterator: IntoIterator<Item = String>> IterBlockComponent for UpcaseAll<Iterator> {
+///     type Item = String;
+///
+///     fn append(
+///         self,
+///         mut block: impl FnMut(String, Document) -> Document,
+///         mut document: Document,
+///     ) -> Document {
+///         for item in self.items {
+///             document = block(item.to_uppercase(), document);
+///         }
+///
+///         document
+///     }
+/// }
+///
+/// # fn main() -> io::Result<()> {
+/// let list = vec![format!("Hello"), format!("World")];
+///
+/// let document = tree! {
+///     <UpcaseAll items={list} as |item| {
+///         {"upcase:"} {item}
+///     }>
+/// };
+///
+/// assert_eq!(document.to_string()?, "upcase:HELLOupcase:WORLD");
 /// # Ok(())
 /// # }
 /// ```
